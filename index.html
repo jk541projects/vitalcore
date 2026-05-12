@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="theme-color" content="#0a0c0f"/>
+  <title>VitalCore</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #0a0c0f; }
+    #root { height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useCallback } = React;
+
+    // ── CONFIG ── Your Cloudflare Worker URL (no API key needed here) ──
+    const WORKER_URL = "vitalcore-proxy.jason-knight-541.workers.dev";
+    // e.g. "https://vitalcore-proxy.yourname.workers.dev"
+    // ────────────────────────────────────────────────────────────────
+
+    const TARGETS = {
+      calories:  { label: "Calories",      unit: "kcal", goal: 2200, color: "#f59e0b" },
+      protein:   { label: "Protein",       unit: "g",    goal: 160,  color: "#00e5a0" },
+      carbs:     { label: "Carbs",         unit: "g",    goal: 200,  color: "#4fc3f7" },
+      fat:       { label: "Fat",           unit: "g",    goal: 65,   color: "#ff6b35" },
+      fiber:     { label: "Fiber",         unit: "g",    goal: 30,   color: "#00e5a0" },
+      sodium:    { label: "Sodium",        unit: "mg",   goal: 2300, color: "#ff6b35" },
+      calcium:   { label: "Calcium",       unit: "mg",   goal: 1000, color: "#4fc3f7" },
+      magnesium: { label: "Magnesium",     unit: "mg",   goal: 420,  color: "#4fc3f7" },
+      vitD:      { label: "Vitamin D",     unit: "IU",   goal: 600,  color: "#f59e0b" },
+      vitC:      { label: "Vitamin C",     unit: "mg",   goal: 90,   color: "#f59e0b" },
+      potassium: { label: "Potassium",     unit: "mg",   goal: 3500, color: "#00e5a0" },
+      zinc:      { label: "Zinc",          unit: "mg",   goal: 11,   color: "#00e5a0" },
+      sugar:     { label: "Sugar",         unit: "g",    goal: 50,   color: "#ff6b35" },
+    };
+
+    const NUTR_KEYS = Object.keys(TARGETS);
+    const EMPTY = () => Object.fromEntries(NUTR_KEYS.map(k => [k, 0]));
+    const fmt = v => Number.isInteger(v) ? v : +v.toFixed(1);
+
+    const EXAMPLES = [
+      "Premier Protein chocolate shake",
+      "2 scrambled eggs + toast",
+      "6oz grilled chicken breast",
+      "Magnesium glycinate 2 caps",
+      "Quarter-pound burger",
+      "Greek yogurt with berries",
+    ];
+
+    const css = `
+      .vc{background:#0a0c0f;color:#e8edf2;font-family:'DM Sans',sans-serif;min-height:100vh;max-width:480px;margin:0 auto;}
+      .vc-hdr{padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between;}
+      .vc-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:26px;letter-spacing:2px;text-transform:uppercase;color:#00e5a0;}
+      .vc-logo span{color:#e8edf2;}
+      .vc-date{background:#161b22;border:1px solid #1e2530;border-radius:20px;padding:6px 14px;font-size:12px;color:#5a6478;}
+      .vc-sum{padding:20px;}
+      .vc-sum-card{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:20px;}
+      .vc-ring{position:relative;width:110px;height:110px;flex-shrink:0;}
+      .vc-ring svg{transform:rotate(-90deg);}
+      .vc-ring-ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+      .vc-ring-pct{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:#00e5a0;line-height:1;}
+      .vc-ring-lbl{font-size:9px;color:#5a6478;text-transform:uppercase;letter-spacing:1px;margin-top:2px;}
+      .vc-sum-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;}
+      .vc-chips{display:flex;gap:8px;flex-wrap:wrap;}
+      .vc-chip{background:#111418;border:1px solid #1e2530;border-radius:8px;padding:6px 10px;}
+      .vc-chip-v{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;display:block;line-height:1;}
+      .vc-chip-l{color:#5a6478;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
+
+      /* TABS */
+      .vc-tabs{display:flex;gap:0;padding:0 20px 16px;border-bottom:1px solid #1e2530;margin-bottom:0;}
+      .vc-tab{flex:1;background:none;border:1px solid #1e2530;color:#5a6478;padding:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .18s;}
+      .vc-tab:first-child{border-radius:8px 0 0 8px;}
+      .vc-tab:last-child{border-radius:0 8px 8px 0;border-left:none;}
+      .vc-tab.active{background:#00e5a0;color:#000;border-color:#00e5a0;}
+
+      /* CAMERA TAB */
+      .vc-cam-wrap{padding:20px;}
+      .vc-cam-card{background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:20px;}
+      .vc-cam-label{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:14px;display:block;}
+      .vc-cam-btns{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+      .vc-cam-btn{display:flex;align-items:center;gap:14px;background:#111418;border:1px solid #1e2530;border-radius:14px;padding:16px;cursor:pointer;width:100%;text-align:left;transition:border-color .18s,background .18s;color:#e8edf2;}
+      .vc-cam-btn:hover{border-color:#00e5a0;background:rgba(0,229,160,.06);}
+      .vc-cam-icon{font-size:26px;width:46px;height:46px;background:#161b22;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+      .vc-cam-txt{flex:1;}
+      .vc-cam-ttl{font-size:15px;font-weight:600;display:block;}
+      .vc-cam-sub{font-size:12px;color:#5a6478;display:block;margin-top:2px;}
+      .vc-preview{width:100%;border-radius:12px;border:1px solid #1e2530;margin-bottom:14px;display:block;}
+      .vc-analyze-btn{width:100%;background:#00e5a0;color:#000;border:none;border-radius:10px;padding:16px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:background .2s;}
+      .vc-analyze-btn:hover{background:#00ffb3;}
+      .vc-analyze-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}
+      .vc-cam-divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:#5a6478;font-size:12px;}
+      .vc-cam-divider::before,.vc-cam-divider::after{content:'';flex:1;height:1px;background:#1e2530;}
+
+      /* TEXT INPUT */
+      .vc-input-wrap{padding:0 20px 20px;}
+      .vc-input-card{background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:16px;}
+      .vc-input-label{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:10px;display:block;}
+      .vc-input-row{display:flex;gap:10px;align-items:flex-end;}
+      .vc-textarea{flex:1;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:12px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;resize:none;min-height:52px;max-height:120px;line-height:1.5;outline:none;transition:border-color .2s;}
+      .vc-textarea::placeholder{color:#3a4456;}
+      .vc-textarea:focus{border-color:#00e5a0;}
+      .vc-log-btn{background:#00e5a0;color:#000;border:none;border-radius:10px;padding:14px 18px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:background .2s;flex-shrink:0;}
+      .vc-log-btn:hover{background:#00ffb3;}
+      .vc-log-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}
+      .vc-srv-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid #1e2530;}
+      .vc-srv-label{font-size:12px;color:#5a6478;}
+      .vc-srv-ctrl{display:flex;align-items:center;}
+      .vc-srv-btn{width:32px;height:32px;background:#111418;border:1px solid #1e2530;color:#e8edf2;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;user-select:none;}
+      .vc-srv-btn:first-child{border-radius:8px 0 0 8px;}
+      .vc-srv-btn:last-child{border-radius:0 8px 8px 0;}
+      .vc-srv-btn:hover{background:#1e2530;color:#00e5a0;}
+      .vc-srv-btn:disabled{opacity:.3;cursor:not-allowed;}
+      .vc-srv-val{min-width:40px;height:32px;background:#111418;border-top:1px solid #1e2530;border-bottom:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;}
+      .vc-examples{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
+      .vc-ex{background:#111418;border:1px solid #1e2530;border-radius:20px;padding:5px 12px;font-size:11px;color:#5a6478;cursor:pointer;transition:all .18s;white-space:nowrap;}
+      .vc-ex:hover{border-color:#00e5a0;color:#00e5a0;}
+
+      /* ANALYZING */
+      .vc-analyzing{position:fixed;inset:0;background:rgba(10,12,15,.93);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;}
+      .vc-pulse{width:80px;height:80px;border-radius:50%;border:3px solid #00e5a0;animation:vcp 1.2s ease-in-out infinite;}
+      @keyframes vcp{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.18);opacity:.4;}}
+      .vc-at{font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#00e5a0;}
+      .vc-as{font-size:13px;color:#5a6478;}
+
+      /* NUTRIENTS */
+      .vc-nutrients{padding:0 20px 20px;}
+      .vc-sec{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px;}
+      .vc-nlist{display:flex;flex-direction:column;gap:10px;}
+      .vc-nitem{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px;}
+      .vc-nhdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}
+      .vc-nname{font-size:13px;font-weight:500;}
+      .vc-nvals{font-size:12px;color:#5a6478;}
+      .vc-nvals strong{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:#e8edf2;}
+      .vc-track{height:6px;background:#111418;border-radius:3px;overflow:hidden;}
+      .vc-fill{height:100%;border-radius:3px;transition:width .9s cubic-bezier(.34,1.56,.64,1);}
+      .vc-nst{font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-top:5px;font-weight:500;}
+
+      /* LOG */
+      .vc-log{padding:0 20px 100px;}
+      .vc-log-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+      .vc-rst{background:none;border:1px solid #1e2530;color:#5a6478;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;}
+      .vc-rst:hover{border-color:#ef4444;color:#ef4444;}
+      .vc-llist{display:flex;flex-direction:column;gap:10px;}
+      .vc-empty{text-align:center;padding:40px 20px;color:#5a6478;}
+      .vc-ei{font-size:40px;margin-bottom:12px;}
+      .vc-empty p{font-size:14px;line-height:1.6;}
+      .vc-litem{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;animation:vci .3s ease;}
+      @keyframes vci{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+      .vc-licon{width:48px;height:48px;border-radius:10px;background:#111418;border:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;overflow:hidden;}
+      .vc-licon img{width:100%;height:100%;object-fit:cover;}
+      .vc-ldet{flex:1;min-width:0;}
+      .vc-lname{font-weight:600;font-size:14px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .vc-ltime{font-size:11px;color:#5a6478;margin-bottom:7px;}
+      .vc-ltags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+      .vc-tag{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500;}
+      .vc-tp{background:rgba(0,229,160,.12);color:#00e5a0;}
+      .vc-tc{background:rgba(79,195,247,.12);color:#4fc3f7;}
+      .vc-tf{background:rgba(255,107,53,.12);color:#ff6b35;}
+      .vc-tk{background:rgba(245,158,11,.12);color:#f59e0b;}
+      .vc-item-srv{display:flex;align-items:center;gap:8px;}
+      .vc-item-srv-label{font-size:11px;color:#5a6478;text-transform:uppercase;letter-spacing:.5px;}
+      .vc-isb{width:28px;height:28px;background:#111418;border:1px solid #1e2530;color:#e8edf2;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:all .15s;user-select:none;flex-shrink:0;}
+      .vc-isb:hover{background:#1e2530;border-color:#00e5a0;color:#00e5a0;}
+      .vc-isb:disabled{opacity:.3;cursor:not-allowed;}
+      .vc-isv{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;min-width:28px;text-align:center;}
+      .vc-lright{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;}
+      .vc-del{background:none;border:none;color:#5a6478;cursor:pointer;font-size:15px;padding:4px;line-height:1;transition:color .2s;}
+      .vc-del:hover{color:#ef4444;}
+      .vc-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#161b22;border:1px solid #00e5a0;border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;color:#00e5a0;transition:transform .3s ease;z-index:500;white-space:nowrap;pointer-events:none;}
+      .vc-toast.show{transform:translateX(-50%) translateY(0);}
+    `;
+
+    function VitalCore() {
+      const [logItems, setLogItems]   = useState([]);
+      const [totals, setTotals]       = useState(EMPTY());
+      const [input, setInput]         = useState("");
+      const [servings, setServings]   = useState(1);
+      const [analyzing, setAnalyzing] = useState(false);
+      const [toast, setToast]         = useState({ msg:"", show:false });
+      const [tab, setTab]             = useState("camera"); // "camera" | "text"
+      const [preview, setPreview]     = useState(null);  // { dataUrl, base64, mime }
+      const toastTimer  = useRef(null);
+      const textareaRef = useRef(null);
+      const cameraRef   = useRef(null);
+      const galleryRef  = useRef(null);
+
+      const today  = new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+      const calPct = Math.min(Math.round(((totals.calories||0)/TARGETS.calories.goal)*100),999);
+      const offset = 289-(289*Math.min(calPct,100)/100);
+
+      const showToast = useCallback((msg) => {
+        clearTimeout(toastTimer.current);
+        setToast({msg,show:true});
+        toastTimer.current = setTimeout(()=>setToast(t=>({...t,show:false})),2800);
+      },[]);
+
+      function recomputeTotals(items) {
+        const next = EMPTY();
+        for (const item of items)
+          for (const k of NUTR_KEYS)
+            next[k] += (item.baseNutr[k]||0)*item.servings;
+        return next;
+      }
+
+      // ── IMAGE HANDLING ──────────────────────────────────────────
+      function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        e.target.value = "";
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target.result;
+          const base64  = dataUrl.split(",")[1];
+          const mime    = file.type || "image/jpeg";
+          setPreview({ dataUrl, base64, mime });
+        };
+        reader.readAsDataURL(file);
+      }
+
+      async function analyzeImage() {
+        if (!preview) return;
+        setAnalyzing(true);
+
+        const prompt = `You are a nutrition analysis AI. Analyze this food/drink/supplement image.
+If you can see a nutrition label, read it precisely.
+If it's a whole food or product without a visible label, estimate based on typical values.
+
+Return ONLY valid JSON, no markdown, no backticks:
+{
+  "name": "short descriptive name",
+  "emoji": "single emoji",
+  "calories": number,
+  "protein": number,
+  "carbs": number,
+  "fat": number,
+  "fiber": number,
+  "sodium": number,
+  "calcium": number,
+  "magnesium": number,
+  "vitD": number,
+  "vitC": number,
+  "potassium": number,
+  "zinc": number,
+  "sugar": number
+}
+Values are per 1 serving. Return 0 for negligible, never null.`;
+
+        try {
+          const res  = await fetch(WORKER_URL,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+              model:"claude-sonnet-4-20250514",
+              max_tokens:600,
+              messages:[{role:"user",content:[
+                {type:"image",source:{type:"base64",media_type:preview.mime,data:preview.base64}},
+                {type:"text",text:prompt}
+              ]}]
+            })
+          });
+          const data = await res.json();
+          const raw  = (data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+          const n    = JSON.parse(raw);
+          addItem(n, null, servings, preview.dataUrl);
+          setPreview(null);
+          setServings(1);
+        } catch(e) {
+          console.error(e);
+          showToast("Couldn't analyze — try again");
+        } finally {
+          setAnalyzing(false);
+        }
+      }
+
+      // ── TEXT HANDLING ───────────────────────────────────────────
+      async function handleLog() {
+        const text = input.trim();
+        if (!text||analyzing) return;
+        setAnalyzing(true);
+        setInput("");
+        const srv = servings;
+        setServings(1);
+
+        const prompt = `You are a nutrition analysis AI. The user consumed: "${text}"
+
+Return ONLY valid JSON, no markdown, no backticks:
+{
+  "name": "clean short name",
+  "emoji": "single emoji",
+  "calories": number,
+  "protein": number,
+  "carbs": number,
+  "fat": number,
+  "fiber": number,
+  "sodium": number,
+  "calcium": number,
+  "magnesium": number,
+  "vitD": number,
+  "vitC": number,
+  "potassium": number,
+  "zinc": number,
+  "sugar": number
+}
+Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
+
+        try {
+          const res  = await fetch(WORKER_URL,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:prompt}]})
+          });
+          const data = await res.json();
+          const raw  = (data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+          const n    = JSON.parse(raw);
+          addItem(n, text, srv, null);
+        } catch(e) {
+          console.error(e);
+          showToast("Couldn't analyze — try again");
+        } finally {
+          setAnalyzing(false);
+        }
+      }
+
+      function addItem(n, originalText, srv, imageDataUrl) {
+        const time = new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});
+        const baseNutr = {
+          calories:+n.calories||0, protein:+n.protein||0, carbs:+n.carbs||0,
+          fat:+n.fat||0, fiber:+n.fiber||0, sodium:+n.sodium||0,
+          calcium:+n.calcium||0, magnesium:+n.magnesium||0, vitD:+n.vitD||0,
+          vitC:+n.vitC||0, potassium:+n.potassium||0, zinc:+n.zinc||0, sugar:+n.sugar||0,
+        };
+        const item = {id:Date.now(),time,name:n.name||(originalText||"Item"),emoji:n.emoji||"🍽️",servings:srv,baseNutr,imageDataUrl};
+        setLogItems(prev=>{const next=[item,...prev];setTotals(recomputeTotals(next));return next;});
+        showToast(`✓ ${item.name} × ${srv} logged`);
+      }
+
+      function changeServings(id,delta) {
+        setLogItems(prev=>{
+          const next=prev.map(i=>i.id!==id?i:{...i,servings:Math.max(0.5,Math.min(10,+(i.servings+delta).toFixed(1)))});
+          setTotals(recomputeTotals(next));return next;
+        });
+      }
+
+      function deleteItem(id) {
+        setLogItems(prev=>{const next=prev.filter(i=>i.id!==id);setTotals(recomputeTotals(next));return next;});
+        showToast("Item removed");
+      }
+
+      function resetDay() {
+        if(!window.confirm("Reset today's log?"))return;
+        setLogItems([]);setTotals(EMPTY());showToast("Day reset");
+      }
+
+      function statusFor(key,val) {
+        const {goal,unit}=TARGETS[key],pct=(val/goal)*100;
+        if(val===0)  return{text:`Need ${goal}${unit}`,color:"#5a6478"};
+        if(pct>110)  return{text:`Over by ${Math.round(val-goal)}${unit}`,color:"#ef4444"};
+        if(pct>=100) return{text:"✓ Goal met",color:"#00e5a0"};
+        if(pct<30)   return{text:`${Math.round(goal-val)}${unit} remaining`,color:"#f59e0b"};
+        return       {text:`${Math.round(goal-val)}${unit} remaining`,color:"#00e5a0"};
+      }
+
+      const scaled=(item,key)=>fmt(item.baseNutr[key]*item.servings);
+
+      return (
+        <React.Fragment>
+          <style>{css}</style>
+          <div className="vc">
+
+            {/* HEADER */}
+            <header className="vc-hdr">
+              <div className="vc-logo">Vital<span>Core</span></div>
+              <div className="vc-date">{today}</div>
+            </header>
+
+            {/* RING */}
+            <div className="vc-sum">
+              <div className="vc-sum-card">
+                <div className="vc-ring">
+                  <svg width="110" height="110" viewBox="0 0 110 110">
+                    <circle cx="55" cy="55" r="46" fill="none" stroke="#1e2530" strokeWidth="8"/>
+                    <circle cx="55" cy="55" r="46" fill="none" stroke="#00e5a0" strokeWidth="8"
+                      strokeLinecap="round" strokeDasharray="289" strokeDashoffset={offset}
+                      style={{transition:"stroke-dashoffset 1s ease"}}/>
+                  </svg>
+                  <div className="vc-ring-ctr">
+                    <div className="vc-ring-pct">{calPct}%</div>
+                    <div className="vc-ring-lbl">calories</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="vc-sum-title">Today's Intake</div>
+                  <div className="vc-chips">
+                    {[{k:"protein",l:"Protein",c:"#00e5a0",u:"g"},{k:"carbs",l:"Carbs",c:"#4fc3f7",u:"g"},
+                      {k:"fat",l:"Fat",c:"#ff6b35",u:"g"},{k:"calories",l:"kcal",c:"#f59e0b",u:""}].map(m=>(
+                      <div className="vc-chip" key={m.k}>
+                        <span className="vc-chip-v" style={{color:m.c}}>{Math.round(totals[m.k]||0)}{m.u}</span>
+                        <span className="vc-chip-l">{m.l}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* TABS */}
+            <div className="vc-tabs">
+              <button className={`vc-tab${tab==="camera"?" active":""}`} onClick={()=>setTab("camera")}>📷 Camera / Photo</button>
+              <button className={`vc-tab${tab==="text"?" active":""}`} onClick={()=>setTab("text")}>✏️ Type It</button>
+            </div>
+
+            {/* CAMERA TAB */}
+            {tab==="camera" && (
+              <div className="vc-cam-wrap">
+                <div className="vc-cam-card">
+                  <span className="vc-cam-label">Snap or Upload a Photo</span>
+
+                  {!preview ? (
+                    <div className="vc-cam-btns">
+                      <button className="vc-cam-btn" onClick={()=>cameraRef.current.click()}>
+                        <div className="vc-cam-icon">📷</div>
+                        <div className="vc-cam-txt">
+                          <span className="vc-cam-ttl">Take a Photo</span>
+                          <span className="vc-cam-sub">Open camera to snap food or label</span>
+                        </div>
+                      </button>
+                      <button className="vc-cam-btn" onClick={()=>galleryRef.current.click()}>
+                        <div className="vc-cam-icon">🖼️</div>
+                        <div className="vc-cam-txt">
+                          <span className="vc-cam-ttl">Choose from Gallery</span>
+                          <span className="vc-cam-sub">Pick an existing photo</span>
+                        </div>
+                      </button>
+                    </div>
+                  ) : (
+                    <React.Fragment>
+                      <img src={preview.dataUrl} className="vc-preview" alt="preview"/>
+                      <div className="vc-srv-row" style={{marginBottom:"14px"}}>
+                        <span className="vc-srv-label">Servings</span>
+                        <div className="vc-srv-ctrl">
+                          <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.max(0.5,+(s-0.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
+                          <div className="vc-srv-val">{servings}</div>
+                          <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.min(10,+(s+0.5).toFixed(1)))} disabled={servings>=10}>+</button>
+                        </div>
+                      </div>
+                      <button className="vc-analyze-btn" onClick={analyzeImage} disabled={analyzing}>
+                        Analyze &amp; Log
+                      </button>
+                      <div className="vc-cam-divider">or</div>
+                      <button className="vc-cam-btn" onClick={()=>setPreview(null)} style={{justifyContent:"center",color:"#5a6478"}}>
+                        ← Choose a different photo
+                      </button>
+                    </React.Fragment>
+                  )}
+
+                  <input ref={cameraRef}  type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{display:"none"}}/>
+                  <input ref={galleryRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
+                </div>
+              </div>
+            )}
+
+            {/* TEXT TAB */}
+            {tab==="text" && (
+              <div className="vc-input-wrap">
+                <div className="vc-input-card">
+                  <span className="vc-input-label">Describe What You Ate</span>
+                  <div className="vc-input-row">
+                    <textarea ref={textareaRef} className="vc-textarea"
+                      placeholder={`e.g. "Premier Protein shake" or "6oz chicken breast"`}
+                      value={input} onChange={e=>setInput(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleLog();}}}
+                      rows={2}/>
+                    <button className="vc-log-btn" onClick={handleLog} disabled={!input.trim()||analyzing}>Log It</button>
+                  </div>
+                  <div className="vc-srv-row">
+                    <span className="vc-srv-label">Servings</span>
+                    <div className="vc-srv-ctrl">
+                      <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.max(0.5,+(s-0.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
+                      <div className="vc-srv-val">{servings}</div>
+                      <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.min(10,+(s+0.5).toFixed(1)))} disabled={servings>=10}>+</button>
+                    </div>
+                  </div>
+                  <div className="vc-examples">
+                    {EXAMPLES.map(ex=>(
+                      <button key={ex} className="vc-ex" onClick={()=>{setInput(ex);textareaRef.current?.focus();}}>{ex}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* NUTRIENT BARS */}
+            <div className="vc-nutrients">
+              <div className="vc-sec">Daily Progress</div>
+              <div className="vc-nlist">
+                {Object.entries(TARGETS).map(([key,cfg])=>{
+                  const val=totals[key]||0,pct=Math.min((val/cfg.goal)*100,100),over=(val/cfg.goal)>1.1,st=statusFor(key,val);
+                  return(
+                    <div className="vc-nitem" key={key}>
+                      <div className="vc-nhdr">
+                        <span className="vc-nname">{cfg.label}</span>
+                        <span className="vc-nvals"><strong>{Math.round(val)}{cfg.unit}</strong> / {cfg.goal}{cfg.unit}</span>
+                      </div>
+                      <div className="vc-track"><div className="vc-fill" style={{width:`${pct}%`,background:over?"#ef4444":cfg.color}}/></div>
+                      <div className="vc-nst" style={{color:st.color}}>{st.text}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* LOG */}
+            <div className="vc-log">
+              <div className="vc-log-hdr">
+                <div className="vc-sec" style={{marginBottom:0}}>Logged Items</div>
+                {logItems.length>0&&<button className="vc-rst" onClick={resetDay}>Reset Day</button>}
+              </div>
+              <div className="vc-llist">
+                {logItems.length===0?(
+                  <div className="vc-empty">
+                    <div className="vc-ei">🥗</div>
+                    <p>Snap a photo or type what you ate<br/>to start tracking your day.</p>
+                  </div>
+                ):logItems.map(item=>(
+                  <div className="vc-litem" key={item.id}>
+                    <div className="vc-licon">
+                      {item.imageDataUrl ? <img src={item.imageDataUrl} alt={item.name}/> : item.emoji}
+                    </div>
+                    <div className="vc-ldet">
+                      <div className="vc-lname">{item.name}</div>
+                      <div className="vc-ltime">{item.time}</div>
+                      <div className="vc-ltags">
+                        {item.baseNutr.protein>0&&<span className="vc-tag vc-tp">{scaled(item,"protein")}g protein</span>}
+                        {item.baseNutr.carbs>0&&<span className="vc-tag vc-tc">{scaled(item,"carbs")}g carbs</span>}
+                        {item.baseNutr.fat>0&&<span className="vc-tag vc-tf">{scaled(item,"fat")}g fat</span>}
+                        {item.baseNutr.calories>0&&<span className="vc-tag vc-tk">{scaled(item,"calories")} kcal</span>}
+                      </div>
+                      <div className="vc-item-srv">
+                        <span className="vc-item-srv-label">Servings</span>
+                        <button className="vc-isb" onClick={()=>changeServings(item.id,-0.5)} disabled={item.servings<=0.5}>−</button>
+                        <span className="vc-isv">{item.servings}</span>
+                        <button className="vc-isb" onClick={()=>changeServings(item.id,+0.5)} disabled={item.servings>=10}>+</button>
+                      </div>
+                    </div>
+                    <div className="vc-lright">
+                      <button className="vc-del" onClick={()=>deleteItem(item.id)}>✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {analyzing&&(
+            <div className="vc-analyzing">
+              <div className="vc-pulse"/>
+              <div className="vc-at">Analyzing</div>
+              <div className="vc-as">Reading nutrition data…</div>
+            </div>
+          )}
+          <div className={`vc-toast${toast.show?" show":""}`}>{toast.msg}</div>
+        </React.Fragment>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<VitalCore/>);
+  </script>
+</body>
+</html>
