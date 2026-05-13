@@ -26,7 +26,7 @@
     const { useState, useRef, useCallback } = React;
 
     // ── CONFIG ── Your Cloudflare Worker URL (no API key needed here) ──
-    const WORKER_URL = "https://vitalcore-proxy.jason-knight-541.workers.dev";
+    const WORKER_URL = "YOUR_CLOUDFLARE_WORKER_URL_HERE";
     // e.g. "https://vitalcore-proxy.yourname.workers.dev"
     // ────────────────────────────────────────────────────────────────
 
@@ -180,6 +180,29 @@
       .vc-del:hover{color:#ef4444;}
       .vc-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#161b22;border:1px solid #00e5a0;border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;color:#00e5a0;transition:transform .3s ease;z-index:500;white-space:nowrap;pointer-events:none;}
       .vc-toast.show{transform:translateX(-50%) translateY(0);}
+
+      /* LABEL NEEDED PROMPT */
+      .vc-label-prompt{background:#161b22;border:1px solid #f59e0b;border-radius:14px;padding:18px;margin:0 20px 20px;text-align:center;}
+      .vc-label-prompt-icon{font-size:32px;margin-bottom:10px;}
+      .vc-label-prompt-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+      .vc-label-prompt-sub{font-size:13px;color:#5a6478;line-height:1.5;margin-bottom:14px;}
+      .vc-label-prompt-btn{background:#f59e0b;color:#000;border:none;border-radius:10px;padding:12px 20px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;width:100%;}
+
+      /* FOOD LIBRARY */
+      .vc-lib{padding:0 20px 100px;}
+      .vc-lib-search{background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;width:100%;margin-bottom:14px;transition:border-color .2s;}
+      .vc-lib-search::placeholder{color:#3a4456;}
+      .vc-lib-search:focus{border-color:#00e5a0;}
+      .vc-lib-item{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+      .vc-lib-icon{width:42px;height:42px;border-radius:8px;background:#111418;border:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+      .vc-lib-det{flex:1;min-width:0;}
+      .vc-lib-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .vc-lib-macros{font-size:11px;color:#5a6478;margin-top:2px;}
+      .vc-lib-add{background:#00e5a0;color:#000;border:none;border-radius:8px;padding:8px 14px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer;flex-shrink:0;transition:background .2s;}
+      .vc-lib-add:hover{background:#00ffb3;}
+      .vc-lib-del{background:none;border:none;color:#5a6478;cursor:pointer;font-size:14px;padding:4px;transition:color .2s;flex-shrink:0;}
+      .vc-lib-del:hover{color:#ef4444;}
+      .vc-lib-empty{text-align:center;padding:40px 20px;color:#5a6478;}
     `;
 
     function VitalCore() {
@@ -189,8 +212,11 @@
       const [servings, setServings]   = useState(1);
       const [analyzing, setAnalyzing] = useState(false);
       const [toast, setToast]         = useState({ msg:"", show:false });
-      const [tab, setTab]             = useState("camera"); // "camera" | "text"
-      const [preview, setPreview]     = useState(null);  // { dataUrl, base64, mime }
+      const [tab, setTab]             = useState("camera");
+      const [preview, setPreview]     = useState(null);
+      const [needsLabel, setNeedsLabel] = useState(false);
+      const [library, setLibrary]     = useState(() => { try { return JSON.parse(localStorage.getItem("vc_library")||"[]"); } catch(e){ return []; }});
+      const [libSearch, setLibSearch] = useState("");
       const toastTimer  = useRef(null);
       const textareaRef = useRef(null);
       const cameraRef   = useRef(null);
@@ -219,14 +245,26 @@
         const file = e.target.files[0];
         if (!file) return;
         e.target.value = "";
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const dataUrl = ev.target.result;
+
+        // Compress image before storing — phone photos are often 4-8MB, API limit is ~5MB
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          const canvas = document.createElement("canvas");
+          const MAX = 1200;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else       { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
           const base64  = dataUrl.split(",")[1];
-          const mime    = file.type || "image/jpeg";
-          setPreview({ dataUrl, base64, mime });
+          setPreview({ dataUrl, base64, mime: "image/jpeg" });
         };
-        reader.readAsDataURL(file);
+        img.src = objectUrl;
       }
 
       async function analyzeImage() {
@@ -234,13 +272,18 @@
         setAnalyzing(true);
 
         const prompt = `You are a nutrition analysis AI. Analyze this food/drink/supplement image.
-If you can see a nutrition label, read it precisely.
-If it's a whole food or product without a visible label, estimate based on typical values.
 
-Return ONLY valid JSON, no markdown, no backticks:
+INSTRUCTIONS:
+1. If you can clearly read a nutrition label in the image, use those exact values.
+2. If you can identify the product (brand name, packaging, etc.) but can't read the label clearly, use the web_search tool to look up the exact nutrition facts for that product.
+3. If it's an unpackaged whole food, estimate based on standard nutritional data.
+4. If you cannot identify the product at all and there is no readable label, set "needs_label" to true.
+
+Return ONLY valid JSON with no markdown, no backticks:
 {
-  "name": "short descriptive name",
-  "emoji": "single emoji",
+  "name": "short descriptive product name",
+  "emoji": "single relevant emoji",
+  "needs_label": false,
   "calories": number,
   "protein": number,
   "carbs": number,
@@ -258,27 +301,45 @@ Return ONLY valid JSON, no markdown, no backticks:
 Values are per 1 serving. Return 0 for negligible, never null.`;
 
         try {
-          const res  = await fetch(WORKER_URL,{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({
-              model:"claude-sonnet-4-20250514",
-              max_tokens:600,
-              messages:[{role:"user",content:[
-                {type:"image",source:{type:"base64",media_type:preview.mime,data:preview.base64}},
-                {type:"text",text:prompt}
-              ]}]
+          const res = await fetch(WORKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 1024,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "image", source: { type: "base64", media_type: preview.mime, data: preview.base64 } },
+                  { type: "text", text: prompt }
+                ]
+              }]
             })
           });
           const data = await res.json();
-          const raw  = (data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-          const n    = JSON.parse(raw);
+
+          if (data.error) { showToast("Error: " + data.error); setAnalyzing(false); return; }
+
+          // Extract final text — may come after tool_use blocks
+          const raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+          if (!raw) { showToast("No response — try the text tab instead"); setAnalyzing(false); return; }
+
+          const n = JSON.parse(raw);
+
+          // Product identified but couldn't get nutrition — ask for label photo
+          if (n.needs_label) {
+            setNeedsLabel(true);
+            setAnalyzing(false);
+            return;
+          }
+
           addItem(n, null, servings, preview.dataUrl);
           setPreview(null);
+          setNeedsLabel(false);
           setServings(1);
         } catch(e) {
           console.error(e);
-          showToast("Couldn't analyze — try again");
+          showToast("Analysis failed — try typing the item instead");
         } finally {
           setAnalyzing(false);
         }
@@ -343,7 +404,34 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
         };
         const item = {id:Date.now(),time,name:n.name||(originalText||"Item"),emoji:n.emoji||"🍽️",servings:srv,baseNutr,imageDataUrl};
         setLogItems(prev=>{const next=[item,...prev];setTotals(recomputeTotals(next));return next;});
+
+        // Save to food library (deduplicated by name)
+        setLibrary(prev => {
+          const name = item.name.toLowerCase();
+          const exists = prev.find(l => l.name.toLowerCase() === name);
+          if (exists) return prev; // already in library
+          const libEntry = { id: item.id, name: item.name, emoji: item.emoji, baseNutr };
+          const next = [libEntry, ...prev].slice(0, 100); // cap at 100 items
+          try { localStorage.setItem("vc_library", JSON.stringify(next)); } catch(e){}
+          return next;
+        });
+
         showToast(`✓ ${item.name} × ${srv} logged`);
+      }
+
+      function logFromLibrary(libItem) {
+        const time = new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});
+        const item = {id:Date.now(),time,name:libItem.name,emoji:libItem.emoji,servings:1,baseNutr:libItem.baseNutr,imageDataUrl:null};
+        setLogItems(prev=>{const next=[item,...prev];setTotals(recomputeTotals(next));return next;});
+        showToast(`✓ ${item.name} logged`);
+      }
+
+      function deleteFromLibrary(id) {
+        setLibrary(prev => {
+          const next = prev.filter(i => i.id !== id);
+          try { localStorage.setItem("vc_library", JSON.stringify(next)); } catch(e){}
+          return next;
+        });
       }
 
       function changeServings(id,delta) {
@@ -417,8 +505,9 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
 
             {/* TABS */}
             <div className="vc-tabs">
-              <button className={`vc-tab${tab==="camera"?" active":""}`} onClick={()=>setTab("camera")}>📷 Camera / Photo</button>
-              <button className={`vc-tab${tab==="text"?" active":""}`} onClick={()=>setTab("text")}>✏️ Type It</button>
+              <button className={`vc-tab${tab==="camera"?" active":""}`} onClick={()=>setTab("camera")}>📷 Camera</button>
+              <button className={`vc-tab${tab==="text"?" active":""}`} onClick={()=>setTab("text")}>✏️ Type</button>
+              <button className={`vc-tab${tab==="library"?" active":""}`} onClick={()=>setTab("library")}>📚 Library {library.length>0&&`(${library.length})`}</button>
             </div>
 
             {/* CAMERA TAB */}
@@ -427,7 +516,17 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
                 <div className="vc-cam-card">
                   <span className="vc-cam-label">Snap or Upload a Photo</span>
 
-                  {!preview ? (
+                  {/* NEEDS LABEL PROMPT */}
+                  {needsLabel && !preview && (
+                    <div className="vc-label-prompt">
+                      <div className="vc-label-prompt-icon">🏷️</div>
+                      <div className="vc-label-prompt-title">Nutrition Label Needed</div>
+                      <div className="vc-label-prompt-sub">I could identify the product but couldn't find complete nutrition data. Please snap a photo of the nutrition facts label on the back.</div>
+                      <button className="vc-label-prompt-btn" onClick={()=>{setNeedsLabel(false);cameraRef.current.click();}}>📷 Snap the Label</button>
+                    </div>
+                  )}
+
+                  {!needsLabel && !preview && (
                     <div className="vc-cam-btns">
                       <button className="vc-cam-btn" onClick={()=>cameraRef.current.click()}>
                         <div className="vc-cam-icon">📷</div>
@@ -444,6 +543,7 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
                         </div>
                       </button>
                     </div>
+                  )}
                   ) : (
                     <React.Fragment>
                       <img src={preview.dataUrl} className="vc-preview" alt="preview"/>
@@ -498,6 +598,30 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
                     ))}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* LIBRARY TAB */}
+            {tab==="library" && (
+              <div className="vc-lib">
+                <input className="vc-lib-search" placeholder="Search your food library…"
+                  value={libSearch} onChange={e=>setLibSearch(e.target.value)}/>
+                {library.length===0 ? (
+                  <div className="vc-lib-empty">
+                    <div style={{fontSize:36,marginBottom:12}}>📚</div>
+                    <p style={{fontSize:14,lineHeight:1.6}}>Foods you log will be saved here<br/>for quick re-logging.</p>
+                  </div>
+                ) : library.filter(i=>i.name.toLowerCase().includes(libSearch.toLowerCase())).map(item=>(
+                  <div className="vc-lib-item" key={item.id}>
+                    <div className="vc-lib-icon">{item.emoji}</div>
+                    <div className="vc-lib-det">
+                      <div className="vc-lib-name">{item.name}</div>
+                      <div className="vc-lib-macros">{item.baseNutr.calories} kcal · {item.baseNutr.protein}g protein · {item.baseNutr.carbs}g carbs · {item.baseNutr.fat}g fat</div>
+                    </div>
+                    <button className="vc-lib-add" onClick={()=>logFromLibrary(item)}>+ Log</button>
+                    <button className="vc-lib-del" onClick={()=>deleteFromLibrary(item.id)}>✕</button>
+                  </div>
+                ))}
               </div>
             )}
 
