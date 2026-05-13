@@ -304,7 +304,7 @@ Values are per 1 serving. Return 0 for negligible, never null.`;
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "claude-sonnet-4-20250514",
+              model: "claude-sonnet-4-5",
               max_tokens: 1024,
               messages: [{
                 role: "user",
@@ -379,7 +379,7 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
           const res  = await fetch(WORKER_URL,{
             method:"POST",
             headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:prompt}]})
+            body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:500,messages:[{role:"user",content:prompt}]})
           });
           const data = await res.json();
           const raw  = (data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
