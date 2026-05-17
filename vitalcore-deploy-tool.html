@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>VitalCore Deploy</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0c0f; color: #e8edf2; font-family: 'DM Sans', sans-serif; min-height: 100vh; }
+
+.header {
+  padding: 24px 20px 0;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.logo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 900; font-size: 24px;
+  letter-spacing: 2px; text-transform: uppercase; color: #00e5a0;
+}
+.logo span { color: #e8edf2; }
+.badge {
+  background: rgba(0,229,160,.1); border: 1px solid rgba(0,229,160,.3);
+  border-radius: 20px; padding: 4px 12px;
+  font-size: 11px; color: #00e5a0; font-weight: 500;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+
+.container { padding: 20px; max-width: 600px; margin: 0 auto; }
+
+/* SETUP CARD */
+.setup-card {
+  background: #161b22; border: 1px solid #1e2530;
+  border-radius: 16px; padding: 20px; margin-bottom: 16px;
+}
+.card-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px; font-weight: 600;
+  letter-spacing: 2px; text-transform: uppercase;
+  color: #5a6478; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.card-title .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #1e2530; flex-shrink: 0;
+}
+.card-title .dot.filled { background: #00e5a0; }
+
+.field-label {
+  font-size: 12px; color: #5a6478; font-weight: 500;
+  margin-bottom: 6px; display: block;
+}
+.field-input {
+  width: 100%; background: #111418;
+  border: 1px solid #1e2530; border-radius: 10px;
+  padding: 12px 14px; color: #e8edf2;
+  font-family: 'DM Sans', sans-serif; font-size: 14px;
+  outline: none; transition: border-color .2s;
+  margin-bottom: 12px;
+}
+.field-input::placeholder { color: #3a4456; }
+.field-input:focus { border-color: #00e5a0; }
+
+.field-hint {
+  font-size: 11px; color: #3a4456; margin-top: -8px;
+  margin-bottom: 12px; line-height: 1.5;
+}
+.field-hint a { color: #00e5a0; text-decoration: none; }
+
+.save-btn {
+  background: #1e2530; border: 1px solid #2a3444;
+  color: #e8edf2; border-radius: 8px;
+  padding: 10px 18px; font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: all .2s; width: 100%;
+}
+.save-btn:hover { border-color: #00e5a0; color: #00e5a0; }
+.save-btn.saved { border-color: #00e5a0; color: #00e5a0; }
+
+/* FILE CARDS */
+.file-card {
+  background: #161b22; border: 1px solid #1e2530;
+  border-radius: 16px; padding: 20px; margin-bottom: 16px;
+}
+.file-header {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-bottom: 14px;
+}
+.file-name {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 18px; font-weight: 700;
+  letter-spacing: 1px; color: #e8edf2;
+}
+.file-status {
+  font-size: 11px; padding: 4px 10px;
+  border-radius: 20px; font-weight: 500;
+  letter-spacing: .5px; text-transform: uppercase;
+}
+.status-empty { background: #1e2530; color: #5a6478; }
+.status-ready { background: rgba(0,229,160,.12); color: #00e5a0; }
+.status-deployed { background: rgba(0,229,160,.2); color: #00e5a0; border: 1px solid rgba(0,229,160,.3); }
+.status-error { background: rgba(239,68,68,.12); color: #ef4444; }
+
+.file-textarea {
+  width: 100%; height: 120px;
+  background: #111418; border: 1px solid #1e2530;
+  border-radius: 10px; padding: 12px 14px;
+  color: #e8edf2; font-family: 'DM Sans', sans-serif;
+  font-size: 13px; resize: vertical; outline: none;
+  transition: border-color .2s; line-height: 1.4;
+}
+.file-textarea::placeholder { color: #3a4456; }
+.file-textarea:focus { border-color: #00e5a0; }
+
+.file-meta {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-top: 10px; font-size: 11px; color: #3a4456;
+}
+
+.deploy-btn {
+  width: 100%; background: #00e5a0; color: #000;
+  border: none; border-radius: 12px; padding: 16px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 18px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase;
+  cursor: pointer; transition: all .2s;
+  display: flex; align-items: center;
+  justify-content: center; gap: 10px;
+  margin-top: 8px;
+}
+.deploy-btn:hover { background: #00ffb3; transform: translateY(-1px); }
+.deploy-btn:active { transform: translateY(0); }
+.deploy-btn:disabled { background: #1e2530; color: #5a6478; cursor: not-allowed; transform: none; }
+
+/* PROGRESS */
+.progress-card {
+  background: #161b22; border: 1px solid #1e2530;
+  border-radius: 16px; padding: 20px; margin-bottom: 16px;
+  display: none;
+}
+.progress-card.visible { display: block; }
+.progress-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px; font-weight: 600;
+  letter-spacing: 2px; text-transform: uppercase;
+  color: #5a6478; margin-bottom: 14px;
+}
+.progress-step {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid #1e2530;
+  font-size: 13px;
+}
+.progress-step:last-child { border-bottom: none; }
+.step-icon {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; flex-shrink: 0;
+  background: #111418; border: 1px solid #1e2530;
+}
+.step-icon.pending { color: #5a6478; }
+.step-icon.running { 
+  border-color: #00e5a0; color: #00e5a0;
+  animation: spin 1s linear infinite;
+}
+.step-icon.done { background: rgba(0,229,160,.15); border-color: #00e5a0; color: #00e5a0; }
+.step-icon.error { background: rgba(239,68,68,.15); border-color: #ef4444; color: #ef4444; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.step-label { flex: 1; color: #e8edf2; }
+.step-detail { font-size: 11px; color: #5a6478; margin-top: 2px; }
+
+/* RESULT */
+.result-card {
+  border-radius: 14px; padding: 18px;
+  margin-bottom: 16px; text-align: center;
+  display: none;
+}
+.result-card.visible { display: block; }
+.result-card.success { background: rgba(0,229,160,.08); border: 1px solid rgba(0,229,160,.3); }
+.result-card.failure { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3); }
+.result-icon { font-size: 36px; margin-bottom: 10px; }
+.result-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.result-card.success .result-title { color: #00e5a0; }
+.result-card.failure .result-title { color: #ef4444; }
+.result-sub { font-size: 13px; color: #5a6478; line-height: 1.6; }
+.result-link {
+  display: inline-block; margin-top: 14px;
+  background: #00e5a0; color: #000;
+  border-radius: 8px; padding: 10px 20px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 15px; font-weight: 700;
+  letter-spacing: 1px; text-decoration: none;
+  text-transform: uppercase;
+}
+
+/* INSTRUCTIONS */
+.instructions {
+  background: #0f1419; border: 1px solid #1e2530;
+  border-radius: 12px; padding: 16px; margin-bottom: 16px;
+}
+.instructions-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 2px; text-transform: uppercase;
+  color: #5a6478; margin-bottom: 12px;
+}
+.step-row {
+  display: flex; gap: 12px; margin-bottom: 10px;
+  align-items: flex-start;
+}
+.step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #1e2530; color: #00e5a0;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.step-text { font-size: 13px; color: #8a9ab0; line-height: 1.5; }
+.step-text strong { color: #e8edf2; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Vital<span>Core</span></div>
+  <div class="badge">Deploy Tool</div>
+</div>
+
+<div class="container">
+
+  <!-- INSTRUCTIONS -->
+  <div class="instructions">
+    <div class="instructions-title">How This Works</div>
+    <div class="step-row">
+      <div class="step-num">1</div>
+      <div class="step-text">Set up your GitHub token once below (saved on this device only)</div>
+    </div>
+    <div class="step-row">
+      <div class="step-num">2</div>
+      <div class="step-text">When Claude gives you updated files, <strong>paste the code</strong> into the boxes below</div>
+    </div>
+    <div class="step-row">
+      <div class="step-num">3</div>
+      <div class="step-text">Tap <strong>Deploy to GitHub</strong> — done in seconds, no manual uploading</div>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div class="setup-card">
+    <div class="card-title">
+      <div class="dot" id="setupDot"></div>
+      GitHub Setup
+    </div>
+
+    <label class="field-label">GitHub Personal Access Token</label>
+    <input class="field-input" type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"/>
+    <div class="field-hint">
+      Get yours at <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens/new</a><br>
+      Select scopes: <strong>repo</strong> (full control). Saved locally on this device only.
+    </div>
+
+    <label class="field-label">GitHub Username</label>
+    <input class="field-input" type="text" id="ghUser" placeholder="jk541projects"/>
+
+    <label class="field-label">Repository Name</label>
+    <input class="field-input" type="text" id="ghRepo" placeholder="vitalcore"/>
+
+    <button class="save-btn" id="saveBtn" onclick="saveConfig()">Save Configuration</button>
+  </div>
+
+  <!-- INDEX.HTML -->
+  <div class="file-card">
+    <div class="file-header">
+      <div class="file-name">index.html</div>
+      <div class="file-status status-empty" id="indexStatus">Empty</div>
+    </div>
+    <textarea class="file-textarea" id="indexContent"
+      placeholder="Paste the new index.html content here from Claude…"
+      oninput="updateStatus('index')"></textarea>
+    <div class="file-meta">
+      <span id="indexChars">0 characters</span>
+      <span>Main app file</span>
+    </div>
+  </div>
+
+  <!-- WORKER.JS -->
+  <div class="file-card">
+    <div class="file-header">
+      <div class="file-name">worker.js</div>
+      <div class="file-status status-empty" id="workerStatus">Empty</div>
+    </div>
+    <textarea class="file-textarea" id="workerContent"
+      placeholder="Paste new worker.js content here (leave empty if unchanged)…"
+      oninput="updateStatus('worker')"></textarea>
+    <div class="file-meta">
+      <span id="workerChars">0 characters</span>
+      <span>Cloudflare Worker · optional</span>
+    </div>
+    <div class="field-hint" style="margin-top:10px;margin-bottom:0;">
+      ℹ️ Only paste worker.js if Claude specifically updated it. Leave blank to skip.
+    </div>
+  </div>
+
+  <!-- DEPLOY BUTTON -->
+  <button class="deploy-btn" id="deployBtn" onclick="deploy()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M12 19V5M5 12l7-7 7 7"/>
+    </svg>
+    Deploy to GitHub
+  </button>
+
+  <!-- PROGRESS -->
+  <div class="progress-card" id="progressCard">
+    <div class="progress-title">Deploying</div>
+    <div id="progressSteps"></div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="result-card" id="resultCard">
+    <div class="result-icon" id="resultIcon"></div>
+    <div class="result-title" id="resultTitle"></div>
+    <div class="result-sub" id="resultSub"></div>
+    <a id="resultLink" class="result-link" href="#" target="_blank" style="display:none">Open VitalCore →</a>
+  </div>
+
+</div>
+
+<script>
+const STORAGE_KEY = "vc_deploy_config";
+
+// ── LOAD SAVED CONFIG ────────────────────────────────────────────
+window.addEventListener("load", () => {
+  try {
+    const cfg = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    if (cfg.token) document.getElementById("ghToken").value = cfg.token;
+    if (cfg.user)  document.getElementById("ghUser").value  = cfg.user;
+    if (cfg.repo)  document.getElementById("ghRepo").value  = cfg.repo;
+    if (cfg.token && cfg.user && cfg.repo) markSetupDone();
+  } catch(e){}
+});
+
+function saveConfig() {
+  const token = document.getElementById("ghToken").value.trim();
+  const user  = document.getElementById("ghUser").value.trim();
+  const repo  = document.getElementById("ghRepo").value.trim();
+  if (!token || !user || !repo) { alert("Please fill in all three fields."); return; }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, user, repo }));
+  } catch(e){}
+  markSetupDone();
+}
+
+function markSetupDone() {
+  document.getElementById("setupDot").classList.add("filled");
+  const btn = document.getElementById("saveBtn");
+  btn.textContent = "✓ Configuration Saved";
+  btn.classList.add("saved");
+}
+
+function updateStatus(file) {
+  const content = document.getElementById(file + "Content").value;
+  const statusEl = document.getElementById(file + "Status");
+  const charEl   = document.getElementById(file + "Chars");
+  charEl.textContent = content.length.toLocaleString() + " characters";
+  if (content.trim().length > 100) {
+    statusEl.textContent = "Ready";
+    statusEl.className = "file-status status-ready";
+  } else {
+    statusEl.textContent = file === "worker" ? "Optional" : "Empty";
+    statusEl.className = "file-status status-empty";
+  }
+}
+
+// ── DEPLOY ───────────────────────────────────────────────────────
+async function deploy() {
+  const cfg = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+  if (!cfg.token || !cfg.user || !cfg.repo) {
+    alert("Please save your GitHub configuration first.");
+    return;
+  }
+
+  const indexContent  = document.getElementById("indexContent").value.trim();
+  const workerContent = document.getElementById("workerContent").value.trim();
+
+  if (!indexContent) {
+    alert("Please paste the index.html content before deploying.");
+    return;
+  }
+
+  // Build list of files to deploy
+  const files = [{ path: "index.html", content: indexContent, label: "Uploading index.html" }];
+  if (workerContent.length > 50) {
+    files.push({ path: "worker.js", content: workerContent, label: "Uploading worker.js" });
+  }
+
+  // Show progress UI
+  document.getElementById("deployBtn").disabled = true;
+  document.getElementById("progressCard").classList.add("visible");
+  document.getElementById("resultCard").classList.remove("visible");
+  document.getElementById("resultCard").className = "result-card";
+
+  const stepsEl = document.getElementById("progressSteps");
+  stepsEl.innerHTML = "";
+
+  // Render step elements
+  const stepEls = files.map((f, i) => {
+    const div = document.createElement("div");
+    div.className = "progress-step";
+    div.innerHTML = `
+      <div class="step-icon pending" id="step-icon-${i}">○</div>
+      <div>
+        <div class="step-label">${f.label}</div>
+        <div class="step-detail" id="step-detail-${i}">Waiting…</div>
+      </div>`;
+    stepsEl.appendChild(div);
+    return div;
+  });
+
+  // Add a "Pages rebuilding" final step
+  const finalDiv = document.createElement("div");
+  finalDiv.className = "progress-step";
+  finalDiv.innerHTML = `
+    <div class="step-icon pending" id="step-icon-final">○</div>
+    <div>
+      <div class="step-label">GitHub Pages rebuilding</div>
+      <div class="step-detail" id="step-detail-final">Waiting…</div>
+    </div>`;
+  stepsEl.appendChild(finalDiv);
+
+  let allGood = true;
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    setStep(i, "running", "⟳", "Pushing to GitHub…");
+
+    try {
+      // Get current file SHA (needed for updates)
+      const sha = await getFileSha(cfg, f.path);
+      // Push file
+      await pushFile(cfg, f.path, f.content, sha);
+      setStep(i, "done", "✓", "Deployed successfully");
+    } catch(e) {
+      setStep(i, "error", "✗", e.message || "Failed");
+      allGood = false;
+      break;
+    }
+  }
+
+  if (allGood) {
+    // Show pages rebuilding step
+    setStep("final", "running", "⟳", "Usually takes 1–2 minutes…");
+    await wait(3000); // small wait so it feels real
+    setStep("final", "done", "✓", "Pages rebuild triggered");
+    showResult("success", cfg.user, cfg.repo);
+    // Mark deployed status on file cards
+    document.getElementById("indexStatus").textContent = "Deployed";
+    document.getElementById("indexStatus").className = "file-status status-deployed";
+  } else {
+    setStep("final", "error", "✗", "Skipped due to error");
+    showResult("failure");
+  }
+
+  document.getElementById("deployBtn").disabled = false;
+}
+
+async function getFileSha(cfg, path) {
+  const url = `https://api.github.com/repos/${cfg.user}/${cfg.repo}/contents/${path}`;
+  const res  = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${cfg.token}`,
+      "Accept": "application/vnd.github+json",
+    }
+  });
+  if (res.status === 404) return null; // new file
+  if (!res.ok) throw new Error(`GitHub API error ${res.status}`);
+  const data = await res.json();
+  return data.sha || null;
+}
+
+async function pushFile(cfg, path, content, sha) {
+  const url  = `https://api.github.com/repos/${cfg.user}/${cfg.repo}/contents/${path}`;
+  const body = {
+    message: `VitalCore update: ${path} — ${new Date().toLocaleString()}`,
+    content: btoa(unescape(encodeURIComponent(content))), // UTF-8 safe base64
+    branch:  "main",
+  };
+  if (sha) body.sha = sha;
+
+  const res = await fetch(url, {
+    method:  "PUT",
+    headers: {
+      "Authorization": `Bearer ${cfg.token}`,
+      "Accept":        "application/vnd.github+json",
+      "Content-Type":  "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+}
+
+function setStep(id, state, icon, detail) {
+  const iconEl   = document.getElementById(`step-icon-${id}`);
+  const detailEl = document.getElementById(`step-detail-${id}`);
+  if (!iconEl) return;
+  iconEl.className = `step-icon ${state}`;
+  iconEl.textContent = icon;
+  if (detailEl) detailEl.textContent = detail;
+}
+
+function showResult(type, user, repo) {
+  const card = document.getElementById("resultCard");
+  card.classList.add("visible", type === "success" ? "success" : "failure");
+
+  if (type === "success") {
+    document.getElementById("resultIcon").textContent = "🚀";
+    document.getElementById("resultTitle").textContent = "Deployed!";
+    document.getElementById("resultSub").textContent = "Your app is updating now. GitHub Pages usually rebuilds in 1–2 minutes.";
+    const link = document.getElementById("resultLink");
+    link.href = `https://${user}.github.io/${repo}`;
+    link.style.display = "inline-block";
+  } else {
+    document.getElementById("resultIcon").textContent = "⚠️";
+    document.getElementById("resultTitle").textContent = "Deploy Failed";
+    document.getElementById("resultSub").textContent = "Check your GitHub token has 'repo' scope and try again. See step details above.";
+    document.getElementById("resultLink").style.display = "none";
+  }
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
