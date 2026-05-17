@@ -317,11 +317,24 @@ Values are per 1 serving. Return 0 for negligible, never null.`;
           });
           const data = await res.json();
 
-          if (data.error) { showToast("Error: " + data.error); setAnalyzing(false); return; }
+          // Show full error detail so we can diagnose
+          if (data.error) { 
+            showToast("API Error: " + JSON.stringify(data.error).slice(0,80)); 
+            setAnalyzing(false); 
+            return; 
+          }
+
+          // Log full response to console for debugging
+          console.log("Full API response:", JSON.stringify(data).slice(0, 500));
 
           // Extract final text — may come after tool_use blocks
           const raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-          if (!raw) { showToast("No response — try the text tab instead"); setAnalyzing(false); return; }
+          if (!raw) { 
+            const contentTypes = (data.content||[]).map(b=>b.type).join(", ");
+            showToast("No text in response. Got: " + contentTypes + " | stop: " + data.stop_reason); 
+            setAnalyzing(false); 
+            return; 
+          }
 
           const n = JSON.parse(raw);
 
@@ -337,8 +350,8 @@ Values are per 1 serving. Return 0 for negligible, never null.`;
           setNeedsLabel(false);
           setServings(1);
         } catch(e) {
-          console.error(e);
-          showToast("Analysis failed — try typing the item instead");
+          console.error("Analysis error:", e);
+          showToast("Error: " + (e.message || String(e)).slice(0, 80));
         } finally {
           setAnalyzing(false);
         }
