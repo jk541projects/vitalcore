@@ -79,9 +79,10 @@
 
       /* TABS */
       .vc-tabs{display:flex;gap:0;padding:0 20px 16px;border-bottom:1px solid #1e2530;margin-bottom:0;}
-      .vc-tab{flex:1;background:none;border:1px solid #1e2530;color:#5a6478;padding:10px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .18s;}
+      .vc-tab{flex:1;background:none;border:1px solid #1e2530;color:#5a6478;padding:8px 4px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:all .18s;}
       .vc-tab:first-child{border-radius:8px 0 0 8px;}
       .vc-tab:last-child{border-radius:0 8px 8px 0;border-left:none;}
+      .vc-tab:not(:first-child){border-left:none;}
       .vc-tab.active{background:#00e5a0;color:#000;border-color:#00e5a0;}
 
       /* CAMERA TAB */
@@ -180,6 +181,48 @@
       .vc-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#161b22;border:1px solid #00e5a0;border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;color:#00e5a0;transition:transform .3s ease;z-index:500;white-space:nowrap;pointer-events:none;}
       .vc-toast.show{transform:translateX(-50%) translateY(0);}
 
+      /* HISTORY TAB */
+      .vc-hist{padding:0 20px 100px;}
+      .vc-hist-empty{text-align:center;padding:40px 20px;color:#5a6478;}
+      .vc-snap-btn{width:100%;background:#161b22;border:1px solid #00e5a0;color:#00e5a0;border-radius:12px;padding:14px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-bottom:20px;transition:all .2s;}
+      .vc-snap-btn:hover{background:rgba(0,229,160,.08);}
+      .vc-hist-section{margin-bottom:24px;}
+      .vc-hist-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px;}
+
+      /* CALENDAR GRID */
+      .vc-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;}
+      .vc-cal-day-lbl{font-size:9px;color:#3a4456;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:2px 0;}
+      .vc-cal-day{aspect-ratio:1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:default;position:relative;}
+      .vc-cal-day.empty{background:transparent;}
+      .vc-cal-day.no-data{background:#111418;color:#3a4456;}
+      .vc-cal-day.great{background:rgba(0,229,160,.25);color:#00e5a0;}
+      .vc-cal-day.good{background:rgba(0,229,160,.12);color:#00b880;}
+      .vc-cal-day.low{background:rgba(245,158,11,.15);color:#f59e0b;}
+      .vc-cal-day.over{background:rgba(239,68,68,.15);color:#ef4444;}
+      .vc-cal-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;}
+      .vc-cal-legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:#5a6478;}
+      .vc-cal-legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+
+      /* MINI BAR CHART */
+      .vc-chart{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;margin-bottom:12px;}
+      .vc-chart-title{font-size:12px;font-weight:600;color:#e8edf2;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+      .vc-chart-goal{font-size:10px;color:#5a6478;}
+      .vc-chart-bars{display:flex;align-items:flex-end;gap:3px;height:60px;}
+      .vc-chart-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}
+      .vc-chart-bar{width:100%;border-radius:3px 3px 0 0;min-height:2px;transition:height .5s ease;}
+      .vc-chart-lbl{font-size:8px;color:#3a4456;text-align:center;}
+
+      /* DAY DETAIL CARD */
+      .vc-day-card{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;margin-bottom:10px;}
+      .vc-day-card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+      .vc-day-card-date{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:#e8edf2;}
+      .vc-day-card-cal{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:#f59e0b;}
+      .vc-day-nutrients{display:flex;flex-wrap:wrap;gap:6px;}
+      .vc-day-nut{font-size:10px;padding:3px 8px;border-radius:4px;font-weight:500;}
+      .vc-day-nut.hit{background:rgba(0,229,160,.12);color:#00e5a0;}
+      .vc-day-nut.miss{background:rgba(239,68,68,.1);color:#5a6478;}
+      .vc-day-nut.over{background:rgba(245,158,11,.12);color:#f59e0b;}
+
       /* LABEL NEEDED PROMPT */
       .vc-label-prompt{background:#161b22;border:1px solid #f59e0b;border-radius:14px;padding:18px;margin:0 20px 20px;text-align:center;}
       .vc-label-prompt-icon{font-size:32px;margin-bottom:10px;}
@@ -205,8 +248,6 @@
     `;
 
     function VitalCore() {
-      const [logItems, setLogItems]   = useState([]);
-      const [totals, setTotals]       = useState(EMPTY());
       const [input, setInput]         = useState("");
       const [servings, setServings]   = useState(1);
       const [analyzing, setAnalyzing] = useState(false);
@@ -215,15 +256,36 @@
       const [preview, setPreview]     = useState(null);
       const [needsLabel, setNeedsLabel] = useState(false);
       const [library, setLibrary]     = useState(() => { try { return JSON.parse(localStorage.getItem("vc_library")||"[]"); } catch(e){ return []; }});
-      const [libSearch, setLibSearch] = useState("");
+      const [history, setHistory] = useState(() => {
+        try { return JSON.parse(localStorage.getItem("vc_history")||"[]"); } catch(e){ return []; }
+      });
+      const [histView, setHistView] = useState("overview"); // "overview" | date string
       const toastTimer  = useRef(null);
       const textareaRef = useRef(null);
       const cameraRef   = useRef(null);
       const galleryRef  = useRef(null);
 
-      const today  = new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
       const calPct = Math.min(Math.round(((totals.calories||0)/TARGETS.calories.goal)*100),999);
       const offset = 289-(289*Math.min(calPct,100)/100);
+
+      const today  = new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+
+      // Load persisted log — reset if it's a new day
+      const [logItems, setLogItems] = useState(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem("vc_log") || "{}");
+          if (saved.date === today) return saved.items || [];
+        } catch(e){}
+        return [];
+      });
+
+      const [totals, setTotals] = useState(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem("vc_log") || "{}");
+          if (saved.date === today && saved.totals) return saved.totals;
+        } catch(e){}
+        return EMPTY();
+      });
 
       const showToast = useCallback((msg) => {
         clearTimeout(toastTimer.current);
@@ -237,6 +299,24 @@
           for (const k of NUTR_KEYS)
             next[k] += (item.baseNutr[k]||0)*item.servings;
         return next;
+      }
+
+      function saveLog(items, newTotals) {
+        try {
+          localStorage.setItem("vc_log", JSON.stringify({ date: today, items, totals: newTotals }));
+        } catch(e){}
+      }
+
+      function saveSnapshot() {
+        if (logItems.length === 0) { showToast("Nothing logged today yet"); return; }
+        const snap = { date: today, totals: { ...totals }, itemCount: logItems.length };
+        setHistory(prev => {
+          const filtered = prev.filter(d => d.date !== today); // replace if exists
+          const next = [snap, ...filtered].slice(0, 90); // keep 90 days
+          try { localStorage.setItem("vc_history", JSON.stringify(next)); } catch(e){}
+          return next;
+        });
+        showToast("✓ Day snapshot saved to history");
       }
 
       // ── IMAGE HANDLING ──────────────────────────────────────────
@@ -414,16 +494,17 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
           calcium:+n.calcium||0, magnesium:+n.magnesium||0, vitD:+n.vitD||0,
           vitC:+n.vitC||0, potassium:+n.potassium||0, zinc:+n.zinc||0, sugar:+n.sugar||0,
         };
-        const item = {id:Date.now(),time,name:n.name||(originalText||"Item"),emoji:n.emoji||"🍽️",servings:srv,baseNutr,imageDataUrl};
-        setLogItems(prev=>{const next=[item,...prev];setTotals(recomputeTotals(next));return next;});
+        // Strip imageDataUrl before saving to localStorage (too large)
+        const item = {id:Date.now(),time,name:n.name||(originalText||"Item"),emoji:n.emoji||"🍽️",servings:srv,baseNutr,imageDataUrl:null};
+        setLogItems(prev=>{const next=[item,...prev];const t=recomputeTotals(next);setTotals(t);saveLog(next,t);return next;});
 
         // Save to food library (deduplicated by name)
         setLibrary(prev => {
           const name = item.name.toLowerCase();
           const exists = prev.find(l => l.name.toLowerCase() === name);
-          if (exists) return prev; // already in library
+          if (exists) return prev;
           const libEntry = { id: item.id, name: item.name, emoji: item.emoji, baseNutr };
-          const next = [libEntry, ...prev].slice(0, 100); // cap at 100 items
+          const next = [libEntry, ...prev].slice(0, 100);
           try { localStorage.setItem("vc_library", JSON.stringify(next)); } catch(e){}
           return next;
         });
@@ -434,7 +515,7 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
       function logFromLibrary(libItem) {
         const time = new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});
         const item = {id:Date.now(),time,name:libItem.name,emoji:libItem.emoji,servings:1,baseNutr:libItem.baseNutr,imageDataUrl:null};
-        setLogItems(prev=>{const next=[item,...prev];setTotals(recomputeTotals(next));return next;});
+        setLogItems(prev=>{const next=[item,...prev];const t=recomputeTotals(next);setTotals(t);saveLog(next,t);return next;});
         showToast(`✓ ${item.name} logged`);
       }
 
@@ -449,18 +530,18 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
       function changeServings(id,delta) {
         setLogItems(prev=>{
           const next=prev.map(i=>i.id!==id?i:{...i,servings:Math.max(0.5,Math.min(10,+(i.servings+delta).toFixed(1)))});
-          setTotals(recomputeTotals(next));return next;
+          const t=recomputeTotals(next);setTotals(t);saveLog(next,t);return next;
         });
       }
 
       function deleteItem(id) {
-        setLogItems(prev=>{const next=prev.filter(i=>i.id!==id);setTotals(recomputeTotals(next));return next;});
+        setLogItems(prev=>{const next=prev.filter(i=>i.id!==id);const t=recomputeTotals(next);setTotals(t);saveLog(next,t);return next;});
         showToast("Item removed");
       }
 
       function resetDay() {
         if(!window.confirm("Reset today's log?"))return;
-        setLogItems([]);setTotals(EMPTY());showToast("Day reset");
+        setLogItems([]);setTotals(EMPTY());saveLog([],EMPTY());showToast("Day reset");
       }
 
       function statusFor(key,val) {
@@ -519,7 +600,8 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
             <div className="vc-tabs">
               <button className={`vc-tab${tab==="camera"?" active":""}`} onClick={()=>setTab("camera")}>📷 Camera</button>
               <button className={`vc-tab${tab==="text"?" active":""}`} onClick={()=>setTab("text")}>✏️ Type</button>
-              <button className={`vc-tab${tab==="library"?" active":""}`} onClick={()=>setTab("library")}>📚 Library {library.length>0&&`(${library.length})`}</button>
+              <button className={`vc-tab${tab==="library"?" active":""}`} onClick={()=>setTab("library")}>📚 Library</button>
+              <button className={`vc-tab${tab==="history"?" active":""}`} onClick={()=>setTab("history")}>📈 History</button>
             </div>
 
             {/* CAMERA TAB */}
@@ -637,6 +719,207 @@ Values per 1 serving. Use accurate data. Return 0 for negligible, never null.`;
                 ))}
               </div>
             )}
+
+            {/* HISTORY TAB */}
+            {tab==="history" && (()=>{
+              const last30 = history.slice(0,30);
+
+              // Calorie chart data
+              const chartDays = [...last30].reverse();
+              const maxCal = Math.max(...chartDays.map(d=>d.totals.calories||0), TARGETS.calories.goal);
+
+              // Calendar — last 35 days grid
+              const calDays = [];
+              for(let i=34;i>=0;i--){
+                const d = new Date(); d.setDate(d.getDate()-i);
+                const label = d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+                const snap = history.find(h=>h.date===label);
+                calDays.push({label, dayNum: d.getDate(), snap});
+              }
+
+              function dayClass(snap) {
+                if(!snap) return "no-data";
+                const pct = (snap.totals.calories||0)/TARGETS.calories.goal*100;
+                if(pct>=90 && pct<=115) return "great";
+                if(pct>=70 && pct<90)  return "good";
+                if(pct>115)            return "over";
+                return "low";
+              }
+
+              const selectedDay = histView !== "overview" ? history.find(h=>h.date===histView) : null;
+
+              return (
+                <div className="vc-hist">
+                  {/* Save today button */}
+                  <button className="vc-snap-btn" onClick={saveSnapshot}>
+                    💾 Save Today to History
+                  </button>
+
+                  {history.length === 0 ? (
+                    <div className="vc-hist-empty">
+                      <div style={{fontSize:36,marginBottom:12}}>📈</div>
+                      <p style={{fontSize:14,lineHeight:1.7,color:"#5a6478"}}>
+                        Log your food then tap<br/><strong style={{color:"#e8edf2"}}>Save Today to History</strong><br/>to start building your trend data.
+                      </p>
+                    </div>
+                  ) : (
+                    <React.Fragment>
+                      {/* CALENDAR HEATMAP */}
+                      <div className="vc-hist-section">
+                        <div className="vc-hist-title">30-Day Calorie Heatmap</div>
+                        <div className="vc-cal">
+                          {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=>(
+                            <div className="vc-cal-day-lbl" key={d}>{d}</div>
+                          ))}
+                          {/* pad start */}
+                          {Array(calDays[0] ? new Date(calDays[0].label).getDay() : 0).fill(null).map((_,i)=>(
+                            <div className="vc-cal-day empty" key={`pad-${i}`}/>
+                          ))}
+                          {calDays.map(day=>(
+                            <div
+                              key={day.label}
+                              className={`vc-cal-day ${dayClass(day.snap)}`}
+                              onClick={()=>day.snap && setHistView(histView===day.label?"overview":day.label)}
+                              style={{cursor:day.snap?"pointer":"default",outline:histView===day.label?"2px solid #00e5a0":"none"}}
+                            >
+                              {day.dayNum}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="vc-cal-legend">
+                          {[{cls:"great",c:"rgba(0,229,160,.25)",l:"On target"},
+                            {cls:"good", c:"rgba(0,229,160,.12)",l:"Slightly low"},
+                            {cls:"low",  c:"rgba(245,158,11,.15)",l:"Under 70%"},
+                            {cls:"over", c:"rgba(239,68,68,.15)", l:"Over 115%"}].map(x=>(
+                            <div className="vc-cal-legend-item" key={x.cls}>
+                              <div className="vc-cal-legend-dot" style={{background:x.c}}/>
+                              {x.l}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* DAY DETAIL */}
+                      {selectedDay && (
+                        <div className="vc-hist-section">
+                          <div className="vc-hist-title">{selectedDay.date}</div>
+                          <div className="vc-day-card">
+                            <div className="vc-day-card-hdr">
+                              <div className="vc-day-card-date">{selectedDay.itemCount} items logged</div>
+                              <div className="vc-day-card-cal">{Math.round(selectedDay.totals.calories||0)} kcal</div>
+                            </div>
+                            <div className="vc-day-nutrients">
+                              {Object.entries(TARGETS).map(([key,cfg])=>{
+                                const val = selectedDay.totals[key]||0;
+                                const pct = (val/cfg.goal)*100;
+                                const cls = pct>=90&&pct<=115?"hit":pct>115?"over":"miss";
+                                return(
+                                  <div className={`vc-day-nut ${cls}`} key={key}>
+                                    {cfg.label}: {Math.round(val)}{cfg.unit}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* CALORIE TREND CHART */}
+                      {chartDays.length > 1 && (
+                        <div className="vc-hist-section">
+                          <div className="vc-hist-title">Calorie Trend</div>
+                          <div className="vc-chart">
+                            <div className="vc-chart-title">
+                              Daily Calories
+                              <span className="vc-chart-goal">Goal: {TARGETS.calories.goal} kcal</span>
+                            </div>
+                            <div className="vc-chart-bars">
+                              {chartDays.map((d,i)=>{
+                                const val = d.totals.calories||0;
+                                const pct = Math.min((val/maxCal)*100,100);
+                                const overGoal = val > TARGETS.calories.goal*1.15;
+                                const underGoal = val < TARGETS.calories.goal*0.7;
+                                const color = overGoal?"#ef4444":underGoal?"#f59e0b":"#00e5a0";
+                                return(
+                                  <div className="vc-chart-bar-wrap" key={i}>
+                                    <div className="vc-chart-bar" style={{height:`${pct}%`,background:color}}/>
+                                    <div className="vc-chart-lbl">{d.date.split(",")[1]?.trim().split(" ")[1]||""}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Goal line indicator */}
+                            <div style={{marginTop:8,fontSize:10,color:"#5a6478",display:"flex",gap:12}}>
+                              <span style={{color:"#00e5a0"}}>■ On target</span>
+                              <span style={{color:"#f59e0b"}}>■ Low</span>
+                              <span style={{color:"#ef4444"}}>■ Over</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* PROTEIN TREND CHART */}
+                      {chartDays.length > 1 && (
+                        <div className="vc-hist-section">
+                          <div className="vc-hist-title">Protein Trend</div>
+                          <div className="vc-chart">
+                            <div className="vc-chart-title">
+                              Daily Protein
+                              <span className="vc-chart-goal">Goal: {TARGETS.protein.goal}g</span>
+                            </div>
+                            <div className="vc-chart-bars">
+                              {chartDays.map((d,i)=>{
+                                const val = d.totals.protein||0;
+                                const maxP = Math.max(...chartDays.map(x=>x.totals.protein||0), TARGETS.protein.goal);
+                                const pct = Math.min((val/maxP)*100,100);
+                                const color = val>=TARGETS.protein.goal*0.9?"#00e5a0":"#f59e0b";
+                                return(
+                                  <div className="vc-chart-bar-wrap" key={i}>
+                                    <div className="vc-chart-bar" style={{height:`${pct}%`,background:color}}/>
+                                    <div className="vc-chart-lbl">{d.date.split(",")[1]?.trim().split(" ")[1]||""}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* NUTRIENT SCORE SUMMARY */}
+                      <div className="vc-hist-section">
+                        <div className="vc-hist-title">30-Day Nutrient Averages</div>
+                        {Object.entries(TARGETS).map(([key,cfg])=>{
+                          const avg = last30.reduce((sum,d)=>sum+(d.totals[key]||0),0)/Math.max(last30.length,1);
+                          const pct = Math.min((avg/cfg.goal)*100,120);
+                          const over = pct>110;
+                          const color = over?"#ef4444":pct>=80?"#00e5a0":pct>=50?"#f59e0b":"#3a4456";
+                          return(
+                            <div className="vc-nitem" key={key} style={{marginBottom:8}}>
+                              <div className="vc-nhdr">
+                                <span className="vc-nname">{cfg.label}</span>
+                                <span className="vc-nvals">
+                                  <strong>{Math.round(avg)}{cfg.unit}</strong> avg / {cfg.goal}{cfg.unit} goal
+                                </span>
+                              </div>
+                              <div className="vc-track">
+                                <div className="vc-fill" style={{width:`${Math.min(pct,100)}%`,background:color}}/>
+                              </div>
+                              <div className="vc-nst" style={{color}}>
+                                {over?`Averaging over goal by ${Math.round(avg-cfg.goal)}${cfg.unit}`:
+                                 pct>=80?"✓ Consistently meeting goal":
+                                 pct>=50?`${Math.round(cfg.goal-avg)}${cfg.unit} short on average`:
+                                 `Significantly under — avg only ${Math.round(pct)}% of goal`}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                    </React.Fragment>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* NUTRIENT BARS */}
             <div className="vc-nutrients">
