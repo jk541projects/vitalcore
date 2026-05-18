@@ -399,10 +399,46 @@ function VitalCore() {
     const hasLabels = labelPreviews.length > 0;
     const labelCount = labelPreviews.length;
 
+    // Fix: capture data then clear photos immediately so UI resets right away
+    const frontData = {...preview};
+    const labelData = [...labelPreviews];
+    setPreview(null);
+    setLabelPreviews([]);
+    setNeedsLabel(false);
+    setServings(1);
+
+    // Fix 2: If only front photo (no label), check library first before calling API
+    if(!hasLabels) {
+      // Try to match against library by sending just the name identification
+      const libMatchPrompt = `Look at this product image and identify the exact brand and product name. Return ONLY a JSON object: {"name":"exact brand and product name"} Nothing else.`;
+      try {
+        const idRes = await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:100,messages:[{role:"user",content:[
+            {type:"image",source:{type:"base64",media_type:frontData.mime,data:frontData.base64}},
+            {type:"text",text:libMatchPrompt}
+          ]}]})});
+        const idData = await idRes.json();
+        const idRaw = (idData.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+        const identified = JSON.parse(idRaw);
+        const identifiedName = (identified.name||"").toLowerCase();
+        // Check library for a match
+        const libMatch = library.find(l => {
+          const libName = l.name.toLowerCase();
+          return identifiedName.includes(libName.split(" ")[0]) || libName.includes(identifiedName.split(" ")[0]);
+        });
+        if(libMatch) {
+          addItem({...libMatch.baseNutr, name:libMatch.name, emoji:libMatch.emoji}, null, servings);
+          showToast("✓ "+libMatch.name+" matched from library!");
+          setAnalyzing(false);
+          return;
+        }
+      } catch(e){ /* fall through to normal analysis */ }
+    }
+
     const prompt = hasLabels
       ? `You are a precision nutrition label reader. You have been given ${1+labelCount} images:
 Image 1: The FRONT of the product — use this to identify the exact brand and product name.
-${labelPreviews.map((_,i)=>`Image ${i+2}: Nutrition/Supplement Facts label panel ${i+1} — extract exact nutrient values from this.`).join('\n')}
+${labelData.map((_,i)=>`Image ${i+2}: Nutrition/Supplement Facts label panel ${i+1} — extract exact nutrient values from this.`).join('\n')}
 
 CRITICAL RULES:
 1. Use Image 1 for the product name only — use the full brand + product name exactly as shown.
@@ -425,10 +461,9 @@ Return ONLY valid JSON no markdown no backticks:
 {"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
 Values per 1 serving. vitD in IU. Return 0 if not listed.`;
 
-    // Build content — front photo first, then all label photos, then prompt
     const content = [
-      {type:"image",source:{type:"base64",media_type:preview.mime,data:preview.base64}},
-      ...labelPreviews.map(lp=>({type:"image",source:{type:"base64",media_type:lp.mime,data:lp.base64}})),
+      {type:"image",source:{type:"base64",media_type:frontData.mime,data:frontData.base64}},
+      ...labelData.map(lp=>({type:"image",source:{type:"base64",media_type:lp.mime,data:lp.base64}})),
       {type:"text",text:prompt}
     ];
 
@@ -440,9 +475,8 @@ Values per 1 serving. vitD in IU. Return 0 if not listed.`;
       const raw=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
       if(!raw){showToast("No response — try typing instead");return;}
       const n=JSON.parse(raw);
-      if(n.needs_label){setNeedsLabel(true);setPreview(null);setLabelPreviews([]);return;}
+      if(n.needs_label){setNeedsLabel(true);return;}
       addItem(n,null,servings);
-      setPreview(null);setLabelPreviews([]);setNeedsLabel(false);setServings(1);
     } catch(e){showToast("Error: "+String(e.message||e).slice(0,60));}
     finally{setAnalyzing(false);}
   }
@@ -698,12 +732,15 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
   }
 
   function CoachTab() {
+    // Auto-trigger advice when tab opens and items are logged
+    React.useEffect(() => {
+      if(logItems.length > 0 && !coachTips && !coachLoading) {
+        getCoachAdvice();
+      }
+    }, []);
+
     return (
       <div className="vc-coach">
-        <button className="vc-coach-btn" onClick={getCoachAdvice} disabled={coachLoading||logItems.length===0}>
-          {coachLoading?"Analyzing your day…":"🤖 Get Coaching Advice"}
-        </button>
-
         {logItems.length===0&&(
           <div className="vc-coach-empty">
             <div className="vc-coach-empty-icon">🥗</div>
@@ -735,6 +772,10 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
                 <div className="vc-coach-tip-body">{tip.body}</div>
               </div>
             ))}
+            <button className="vc-coach-btn" onClick={getCoachAdvice} disabled={coachLoading}
+              style={{marginTop:16,background:"none",border:"1px solid #1e2530",color:"#5a6478",fontSize:14}}>
+              🔄 Refresh Advice
+            </button>
           </React.Fragment>
         )}
       </div>
@@ -785,7 +826,7 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
           <button className={"vc-tab"+(tab==="text"?" active":"")} onClick={()=>setTab("text")}>✏️ Type</button>
           <button className={"vc-tab"+(tab==="library"?" active":"")} onClick={()=>setTab("library")}>📚 Library</button>
           <button className={"vc-tab"+(tab==="history"?" active":"")} onClick={()=>setTab("history")}>📈 History</button>
-          <button className={"vc-tab"+(tab==="coach"?" active":"")} onClick={()=>setTab("coach")}>🤖 Coach</button>
+          <button className={"vc-tab"+(tab==="coach"?" active":"")} onClick={()=>{setCoachTips(null);setTab("coach");}}>🤖 Coach</button>
         </div>
 
         {tab==="camera"&&(
