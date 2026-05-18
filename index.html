@@ -256,6 +256,18 @@ const S = `
 .vc-coach-loading-pulse{width:50px;height:50px;border-radius:50%;border:3px solid #00e5a0;animation:vcp 1.2s ease-in-out infinite;margin:0 auto 14px;}
 .vc-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#161b22;border:1px solid #00e5a0;border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;color:#00e5a0;transition:transform .3s ease;z-index:500;white-space:nowrap;pointer-events:none;}
 .vc-toast.show{transform:translateX(-50%) translateY(0);}
+.vc-expand-btn{background:none;border:none;color:#5a6478;font-size:11px;cursor:pointer;padding:4px 0;text-decoration:underline;transition:color .2s;}
+.vc-expand-btn:hover{color:#00e5a0;}
+.vc-item-details{margin-top:10px;padding-top:10px;border-top:1px solid #1e2530;}
+.vc-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}
+.vc-detail-row{display:flex;align-items:center;justify-content:space-between;background:#111418;border-radius:6px;padding:5px 8px;}
+.vc-detail-lbl{font-size:10px;color:#5a6478;}
+.vc-detail-val{font-size:12px;font-weight:600;color:#e8edf2;cursor:pointer;border-bottom:1px dashed #3a4456;min-width:40px;text-align:right;}
+.vc-detail-val:hover{color:#00e5a0;border-color:#00e5a0;}
+.vc-detail-edit{display:flex;align-items:center;gap:4px;}
+.vc-detail-input{background:#0a0c0f;border:1px solid #00e5a0;border-radius:4px;color:#e8edf2;font-size:12px;font-weight:600;width:60px;padding:2px 6px;text-align:right;outline:none;}
+.vc-detail-save{background:#00e5a0;color:#000;border:none;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;}
+.vc-verify-note{font-size:10px;color:#5a6478;font-style:italic;margin-top:4px;}
 `;
 
 function VitalCore() {
@@ -288,7 +300,29 @@ function VitalCore() {
   const [coachTips, setCoachTips] = useState(null);
   const [coachLoading, setCoachLoading] = useState(false);
 
-  const toastTimer  = useRef(null);
+  const [expandedItem, setExpandedItem] = useState(null);
+  const [editingItem, setEditingItem]   = useState(null); // {id, field, value}
+
+  function startEdit(itemId, field, currentVal) {
+    setEditingItem({id:itemId, field, value:String(currentVal)});
+  }
+
+  function commitEdit() {
+    if(!editingItem) return;
+    const {id, field, value} = editingItem;
+    const num = parseFloat(value);
+    if(isNaN(num) || num < 0) { setEditingItem(null); return; }
+    setLogItems(prev=>{
+      const next=prev.map(i=>{
+        if(i.id!==id) return i;
+        const newNutr={...i.baseNutr,[field]:num};
+        return {...i,baseNutr:newNutr};
+      });
+      const t=recompute(next);setTotals(t);persist(next,t);return next;
+    });
+    setEditingItem(null);
+    showToast("✓ Updated");
+  }
   const textareaRef = useRef(null);
   const cameraRef   = useRef(null);
   const galleryRef  = useRef(null);
@@ -339,7 +373,19 @@ function VitalCore() {
   async function analyzeImage() {
     if(!preview) return;
     setAnalyzing(true);
-    const prompt=`You are a nutrition analysis AI. Analyze this food/drink/supplement image. If you can read a nutrition label use exact values. If you recognize the product estimate from standard data. Return ONLY valid JSON no markdown no backticks: {"name":"short name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number} Values per 1 serving. Return 0 for negligible never null.`;
+    const prompt=`You are a precision nutrition label reader. Analyze this food/drink/supplement image.
+
+CRITICAL RULES:
+1. If a nutrition label is visible, read EVERY value EXACTLY as printed. Do not estimate or use averages.
+2. Pay special attention to vitamins and minerals — read the exact mg/mcg/IU amounts, NOT the %DV.
+3. For Vitamin D: convert mcg to IU (1 mcg = 40 IU). E.g. 125 mcg = 5000 IU.
+4. If you can see the brand name and product name, use that exact name.
+5. Only use estimation if there is absolutely no label visible.
+
+Return ONLY valid JSON no markdown no backticks:
+{"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
+
+Values are per 1 serving as defined on the label. vitD is in IU. Return 0 only if the label explicitly shows 0 or the nutrient is not listed.`;
     try {
       const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content:[
@@ -840,6 +886,39 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
                     <span className="vc-isv">{item.servings}</span>
                     <button className="vc-isb" onClick={()=>changeServings(item.id,.5)} disabled={item.servings>=10}>+</button>
                   </div>
+                  <button className="vc-expand-btn" onClick={()=>setExpandedItem(expandedItem===item.id?null:item.id)}>
+                    {expandedItem===item.id?"▲ Hide details":"▼ Verify & edit nutrients"}
+                  </button>
+                  {expandedItem===item.id&&(
+                    <div className="vc-item-details">
+                      <div className="vc-detail-grid">
+                        {Object.entries(TARGETS).map(([key,cfg])=>{
+                          const val=item.baseNutr[key]||0;
+                          const isEditing=editingItem&&editingItem.id===item.id&&editingItem.field===key;
+                          return(
+                            <div className="vc-detail-row" key={key}>
+                              <span className="vc-detail-lbl">{cfg.label}</span>
+                              {isEditing?(
+                                <div className="vc-detail-edit">
+                                  <input className="vc-detail-input" type="number" value={editingItem.value}
+                                    onChange={e=>setEditingItem(ei=>({...ei,value:e.target.value}))}
+                                    onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditingItem(null);}}
+                                    autoFocus/>
+                                  <button className="vc-detail-save" onClick={commitEdit}>✓</button>
+                                </div>
+                              ):(
+                                <span className="vc-detail-val" onClick={()=>startEdit(item.id,key,val)}
+                                  title="Tap to edit">
+                                  {fmt(val)}{cfg.unit}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="vc-verify-note">Tap any value to correct it. Changes update your totals instantly.</div>
+                    </div>
+                  )}
                 </div>
                 <div className="vc-lright">
                   <button className="vc-del" onClick={()=>deleteItem(item.id)}>✕</button>
