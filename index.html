@@ -268,6 +268,16 @@ const S = `
 .vc-detail-input{background:#0a0c0f;border:1px solid #00e5a0;border-radius:4px;color:#e8edf2;font-size:12px;font-weight:600;width:60px;padding:2px 6px;text-align:right;outline:none;}
 .vc-detail-save{background:#00e5a0;color:#000;border:none;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;}
 .vc-verify-note{font-size:10px;color:#5a6478;font-style:italic;margin-top:4px;}
+.vc-photo-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.vc-photo-slot{border:2px dashed #1e2530;border-radius:12px;overflow:hidden;position:relative;cursor:pointer;transition:border-color .2s;aspect-ratio:1;}
+.vc-photo-slot:hover{border-color:#00e5a0;}
+.vc-photo-slot.filled{border-style:solid;border-color:#00e5a0;}
+.vc-photo-slot img{width:100%;height:100%;object-fit:cover;display:block;}
+.vc-photo-slot-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px;}
+.vc-photo-slot-icon{font-size:24px;}
+.vc-photo-slot-lbl{font-size:11px;color:#5a6478;text-align:center;line-height:1.4;}
+.vc-photo-slot-badge{position:absolute;top:6px;right:6px;background:#00e5a0;color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;}
+.vc-photo-slot-remove{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.7);color:#e8edf2;border:none;border-radius:4px;font-size:12px;padding:2px 6px;cursor:pointer;}
 `;
 
 function VitalCore() {
@@ -292,7 +302,8 @@ function VitalCore() {
   const [input, setInput]         = useState("");
   const [servings, setServings]   = useState(1);
   const [analyzing, setAnalyzing] = useState(false);
-  const [preview, setPreview]     = useState(null);
+  const [preview, setPreview]       = useState(null);
+  const [labelPreview, setLabelPreview] = useState(null);
   const [needsLabel, setNeedsLabel] = useState(false);
   const [libSearch, setLibSearch] = useState("");
   const [histDetail, setHistDetail] = useState(null);
@@ -323,9 +334,11 @@ function VitalCore() {
     setEditingItem(null);
     showToast("✓ Updated");
   }
-  const textareaRef = useRef(null);
-  const cameraRef   = useRef(null);
-  const galleryRef  = useRef(null);
+  const textareaRef    = useRef(null);
+  const cameraRef      = useRef(null);
+  const galleryRef     = useRef(null);
+  const labelRef       = useRef(null);
+  const labelGalleryRef = useRef(null);
 
   const calPct = Math.min(Math.round(((totals.calories||0)/TARGETS.calories.goal)*100),999);
   const offset = 289-(289*Math.min(calPct,100)/100);
@@ -356,6 +369,15 @@ function VitalCore() {
 
   function handleFileSelect(e) {
     const file=e.target.files[0]; if(!file) return; e.target.value="";
+    compressImage(file, p => setPreview(p));
+  }
+
+  function handleLabelSelect(e) {
+    const file=e.target.files[0]; if(!file) return; e.target.value="";
+    compressImage(file, p => setLabelPreview(p));
+  }
+
+  function compressImage(file, callback) {
     const img=new Image(), url=URL.createObjectURL(file);
     img.onload=()=>{
       URL.revokeObjectURL(url);
@@ -365,7 +387,7 @@ function VitalCore() {
       canvas.width=w;canvas.height=h;
       canvas.getContext("2d").drawImage(img,0,0,w,h);
       const dataUrl=canvas.toDataURL("image/jpeg",.85);
-      setPreview({dataUrl,base64:dataUrl.split(",")[1],mime:"image/jpeg"});
+      callback({dataUrl,base64:dataUrl.split(",")[1],mime:"image/jpeg"});
     };
     img.src=url;
   }
@@ -373,33 +395,52 @@ function VitalCore() {
   async function analyzeImage() {
     if(!preview) return;
     setAnalyzing(true);
-    const prompt=`You are a precision nutrition label reader. Analyze this food/drink/supplement image.
 
+    const hasLabel = !!labelPreview;
+    const prompt = hasLabel
+      ? `You are a precision nutrition label reader. You have been given TWO images:
+Image 1: The FRONT of the product (use this to identify the exact brand and product name).
+Image 2: The SUPPLEMENT/NUTRITION FACTS label (use this to extract EXACT nutrient values).
+
+CRITICAL RULES:
+1. Use Image 1 for the product name — use the full brand + product name exactly as shown.
+2. Use Image 2 for ALL nutrient values — read every value exactly as printed on the label.
+3. For Vitamin D: convert mcg to IU (1 mcg = 40 IU). E.g. 125 mcg = 5000 IU.
+4. Do NOT estimate — every value must come directly from the label in Image 2.
+
+Return ONLY valid JSON no markdown no backticks:
+{"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
+Values are per 1 serving as defined on the label. vitD in IU. Return 0 if not listed.`
+      : `You are a precision nutrition label reader. Analyze this food/drink/supplement image.
 CRITICAL RULES:
 1. If a nutrition label is visible, read EVERY value EXACTLY as printed. Do not estimate or use averages.
 2. Pay special attention to vitamins and minerals — read the exact mg/mcg/IU amounts, NOT the %DV.
 3. For Vitamin D: convert mcg to IU (1 mcg = 40 IU). E.g. 125 mcg = 5000 IU.
 4. If you can see the brand name and product name, use that exact name.
 5. Only use estimation if there is absolutely no label visible.
-
 Return ONLY valid JSON no markdown no backticks:
 {"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
+Values per 1 serving. vitD in IU. Return 0 if not listed.`;
 
-Values are per 1 serving as defined on the label. vitD is in IU. Return 0 only if the label explicitly shows 0 or the nutrient is not listed.`;
+    // Build content array — include label image if provided
+    const content = [];
+    content.push({type:"image",source:{type:"base64",media_type:preview.mime,data:preview.base64}});
+    if(hasLabel) {
+      content.push({type:"image",source:{type:"base64",media_type:labelPreview.mime,data:labelPreview.base64}});
+    }
+    content.push({type:"text",text:prompt});
+
     try {
       const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content:[
-          {type:"image",source:{type:"base64",media_type:preview.mime,data:preview.base64}},
-          {type:"text",text:prompt}
-        ]}]})});
+        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content}]})});
       const data=await res.json();
       if(data.error){showToast("Error: "+String(data.error).slice(0,60));return;}
       const raw=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
       if(!raw){showToast("No response — try typing instead");return;}
       const n=JSON.parse(raw);
-      if(n.needs_label){setNeedsLabel(true);setPreview(null);return;}
+      if(n.needs_label){setNeedsLabel(true);setPreview(null);setLabelPreview(null);return;}
       addItem(n,null,servings);
-      setPreview(null);setNeedsLabel(false);setServings(1);
+      setPreview(null);setLabelPreview(null);setNeedsLabel(false);setServings(1);
     } catch(e){showToast("Error: "+String(e.message||e).slice(0,60));}
     finally{setAnalyzing(false);}
   }
@@ -748,8 +789,9 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
         {tab==="camera"&&(
           <div className="vc-cam-wrap">
             <div className="vc-cam-card">
-              <span className="vc-cam-label">Snap or Upload a Photo</span>
-              {needsLabel&&(
+              <span className="vc-cam-label">Snap or Upload Photos</span>
+
+              {needsLabel&&!preview&&(
                 <div className="vc-label-prompt">
                   <div className="vc-lp-icon">🏷️</div>
                   <div className="vc-lp-title">Label Needed</div>
@@ -757,36 +799,84 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
                   <button className="vc-lp-btn" onClick={()=>{setNeedsLabel(false);cameraRef.current.click();}}>📷 Snap Label</button>
                 </div>
               )}
-              {!needsLabel&&!preview&&(
-                <div className="vc-cam-btns">
-                  <button className="vc-cam-btn" onClick={()=>cameraRef.current.click()}>
-                    <div className="vc-cam-icon">📷</div>
-                    <div className="vc-cam-txt"><span className="vc-cam-ttl">Take a Photo</span><span className="vc-cam-sub">Open camera</span></div>
-                  </button>
-                  <button className="vc-cam-btn" onClick={()=>galleryRef.current.click()}>
-                    <div className="vc-cam-icon">🖼️</div>
-                    <div className="vc-cam-txt"><span className="vc-cam-ttl">Choose from Gallery</span><span className="vc-cam-sub">Pick existing photo</span></div>
-                  </button>
-                </div>
-              )}
-              {preview&&(
+
+              {!needsLabel&&(
                 <React.Fragment>
-                  <img src={preview.dataUrl} className="vc-preview" alt="preview"/>
-                  <div className="vc-srv-row" style={{marginBottom:14}}>
-                    <span className="vc-srv-label">Servings</span>
-                    <div className="vc-srv-ctrl">
-                      <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.max(0.5,+(s-.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
-                      <div className="vc-srv-val">{servings}</div>
-                      <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.min(10,+(s+.5).toFixed(1)))} disabled={servings>=10}>+</button>
+                  {/* TWO PHOTO SLOTS */}
+                  <div className="vc-photo-row">
+                    {/* Slot 1: Front of product */}
+                    <div className={"vc-photo-slot"+(preview?" filled":"")}
+                      onClick={()=>!preview&&cameraRef.current.click()}>
+                      {preview?(
+                        <React.Fragment>
+                          <img src={preview.dataUrl} alt="front"/>
+                          <div className="vc-photo-slot-badge">Front</div>
+                          <button className="vc-photo-slot-remove"
+                            onClick={e=>{e.stopPropagation();setPreview(null);}}>✕</button>
+                        </React.Fragment>
+                      ):(
+                        <div className="vc-photo-slot-empty">
+                          <div className="vc-photo-slot-icon">📦</div>
+                          <div className="vc-photo-slot-lbl">Front of product<br/>(name & brand)</div>
+                        </div>
+                      )}
+                    </div>
+                    {/* Slot 2: Nutrition label */}
+                    <div className={"vc-photo-slot"+(labelPreview?" filled":"")}
+                      onClick={()=>!labelPreview&&labelRef.current.click()}>
+                      {labelPreview?(
+                        <React.Fragment>
+                          <img src={labelPreview.dataUrl} alt="label"/>
+                          <div className="vc-photo-slot-badge">Label</div>
+                          <button className="vc-photo-slot-remove"
+                            onClick={e=>{e.stopPropagation();setLabelPreview(null);}}>✕</button>
+                        </React.Fragment>
+                      ):(
+                        <div className="vc-photo-slot-empty">
+                          <div className="vc-photo-slot-icon">🏷️</div>
+                          <div className="vc-photo-slot-lbl">Nutrition label<br/>(optional but precise)</div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <button className="vc-analyze-btn" onClick={analyzeImage} disabled={analyzing}>Analyze &amp; Log</button>
-                  <div className="vc-divider">or</div>
-                  <button className="vc-cam-btn" onClick={()=>setPreview(null)} style={{justifyContent:"center",color:"#5a6478"}}>← Different photo</button>
+
+                  {/* Gallery options if no photos yet */}
+                  {!preview&&!labelPreview&&(
+                    <div className="vc-cam-btns" style={{marginBottom:12}}>
+                      <button className="vc-cam-btn" onClick={()=>galleryRef.current.click()}>
+                        <div className="vc-cam-icon">🖼️</div>
+                        <div className="vc-cam-txt"><span className="vc-cam-ttl">Choose from Gallery</span><span className="vc-cam-sub">Pick product photo</span></div>
+                      </button>
+                    </div>
+                  )}
+
+                  {preview&&(
+                    <React.Fragment>
+                      <div className="vc-srv-row" style={{marginBottom:14}}>
+                        <span className="vc-srv-label">Servings</span>
+                        <div className="vc-srv-ctrl">
+                          <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.max(0.5,+(s-.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
+                          <div className="vc-srv-val">{servings}</div>
+                          <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.min(10,+(s+.5).toFixed(1)))} disabled={servings>=10}>+</button>
+                        </div>
+                      </div>
+                      <button className="vc-analyze-btn" onClick={analyzeImage} disabled={analyzing}>
+                        {labelPreview?"Analyze Both & Log":"Analyze & Log"}
+                      </button>
+                      {!labelPreview&&(
+                        <div style={{marginTop:10,fontSize:12,color:"#5a6478",textAlign:"center",lineHeight:1.5}}>
+                          💡 Tap the label slot above to add the nutrition facts for higher accuracy
+                        </div>
+                      )}
+                    </React.Fragment>
+                  )}
                 </React.Fragment>
               )}
+
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{display:"none"}}/>
               <input ref={galleryRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
+              <input ref={labelRef} type="file" accept="image/*" capture="environment" onChange={handleLabelSelect} style={{display:"none"}}/>
+              <input ref={labelGalleryRef} type="file" accept="image/*" onChange={handleLabelSelect} style={{display:"none"}}/>
             </div>
           </div>
         )}
