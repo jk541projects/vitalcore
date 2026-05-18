@@ -561,45 +561,78 @@ Values per 1 serving. vitD in IU. Return 0 if not listed.`;
     if(logItems.length===0){showToast("Log some food first!");return;}
     setCoachLoading(true);setCoachTips(null);
 
-    const nutrientSummary = Object.entries(TARGETS).map(([key,cfg])=>{
+    const hour=new Date().getHours();
+    const timeOfDay=hour<12?"morning":hour<17?"afternoon":"evening";
+    const foodList=logItems.map(i=>i.name+" x"+i.servings).join(", ");
+
+    // Today's nutrient status
+    const todaySummary = Object.entries(TARGETS).map(([key,cfg])=>{
       const val=totals[key]||0;
       const pct=Math.round((val/cfg.goal)*100);
       const ctx=NUTRIENT_CONTEXT[key];
-      return key+": "+Math.round(val)+cfg.unit+" ("+pct+"% of "+cfg.goal+cfg.unit+" goal) — canExceed:"+ctx.canExceed;
+      return key+": "+Math.round(val)+cfg.unit+" ("+pct+"% of goal) canExceed:"+ctx.canExceed;
     }).join("\n");
 
-    const foodList=logItems.map(i=>i.name+" x"+i.servings).join(", ");
-    const hour=new Date().getHours();
-    const timeOfDay=hour<12?"morning":hour<17?"afternoon":"evening";
+    // Last 7 days of history (excluding today)
+    const last7 = history.filter(d=>d.date!==today).slice(0,7);
+
+    // Build per-nutrient 7-day averages and patterns
+    let historyContext = "";
+    if(last7.length > 0) {
+      const avgSummary = Object.entries(TARGETS).map(([key,cfg])=>{
+        const vals = last7.map(d=>d.totals[key]||0);
+        const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+        const pct = Math.round((avg/cfg.goal)*100);
+        const daysUnder = vals.filter(v=>(v/cfg.goal)<0.7).length;
+        const daysOver  = vals.filter(v=>(v/cfg.goal)>1.1).length;
+        let pattern = "";
+        if(daysUnder>=5) pattern = "consistently low (under 70% on "+daysUnder+"/"+vals.length+" days)";
+        else if(daysOver>=4) pattern = "consistently over (exceeded on "+daysOver+"/"+vals.length+" days)";
+        else if(daysUnder>=3) pattern = "frequently low";
+        else pattern = "generally on track";
+        return cfg.label+": avg "+avg+cfg.unit+" ("+pct+"% of goal) — "+pattern;
+      }).join("\n");
+
+      const calHistory = last7.map(d=>d.date.split(",")[1]?.trim()+": "+Math.round(d.totals.calories||0)+"kcal").join(", ");
+      const proHistory = last7.map(d=>d.date.split(",")[1]?.trim()+": "+Math.round(d.totals.protein||0)+"g").join(", ");
+
+      historyContext = `
+
+LAST ${last7.length} DAYS OF DATA:
+Calorie history: ${calHistory}
+Protein history: ${proHistory}
+
+7-day nutrient averages and patterns:
+${avgSummary}`;
+    }
 
     const prompt=`You are a friendly, plain-English nutrition coach for a health app called VitalCore. The user is a 45-year-old active male working toward building strength, losing fat, and protecting bad knees.
 
 It is currently ${timeOfDay}. Today they have logged: ${foodList}
 
-Here is their current nutrient status:
-${nutrientSummary}
+TODAY'S NUTRIENT STATUS:
+${todaySummary}
+${historyContext}
 
-Provide 4-6 short, practical coaching tips based on what you see. Be conversational and encouraging — not clinical. 
+Provide 4-6 short, practical coaching tips. Prioritize pattern-based insights when history is available — spot trends the user might not notice themselves. Be conversational and encouraging, not clinical.
 
-IMPORTANT RULES:
-- For nutrients marked canExceed:true (protein, fiber, vitC, potassium, magnesium), exceeding the goal is FINE — say so if they're over
-- For nutrients marked canExceed:false (calories, sodium, sugar, fat, zinc, vitD, calcium, carbs), flag it if they're approaching or over 85%
-- If it's morning/afternoon and they're already high on sodium or sugar, warn them proactively
-- If protein is low and it's still early, encourage them to hit it
+RULES:
+- Lead with the most important insight first
+- If history shows a consistent problem (e.g. protein low 5 of 7 days), call that out specifically — it's more valuable than a single-day observation
+- For nutrients marked canExceed:true (protein, fiber, vitC, potassium, magnesium), exceeding is fine
+- For canExceed:false (calories, sodium, sugar, fat, zinc, vitD, calcium, carbs), flag if approaching or over 85%
+- Reference specific days or streaks when relevant ("4 days in a row", "your best protein day this week")
 - Keep each tip to 2-3 sentences max
-- Use everyday language — no medical jargon
+- Everyday language only — no medical jargon
 
 Return ONLY a JSON array, no markdown, no backticks:
-[
-  {"type":"good|caution|warn|info","icon":"emoji","title":"short title","body":"2-3 sentence tip"},
-  ...
-]
+[{"type":"good|caution|warn|info","icon":"emoji","title":"short title","body":"2-3 sentence tip"}]
 
-Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attention, "info"=general insight`;
+Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attention, "info"=pattern insight`;
 
     try {
       const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1000,messages:[{role:"user",content:prompt}]})});
+        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1200,messages:[{role:"user",content:prompt}]})});
       const data=await res.json();
       if(data.error){showToast("Coach error: "+String(data.error).slice(0,50));return;}
       const raw=(data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
