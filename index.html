@@ -302,9 +302,9 @@ function VitalCore() {
   const [input, setInput]         = useState("");
   const [servings, setServings]   = useState(1);
   const [analyzing, setAnalyzing] = useState(false);
-  const [preview, setPreview]       = useState(null);
-  const [labelPreview, setLabelPreview] = useState(null);
-  const [needsLabel, setNeedsLabel] = useState(false);
+  const [preview, setPreview]           = useState(null);
+  const [labelPreviews, setLabelPreviews] = useState([]); // up to 4 label photos
+  const [needsLabel, setNeedsLabel]     = useState(false);
   const [libSearch, setLibSearch] = useState("");
   const [histDetail, setHistDetail] = useState(null);
   const [toast, setToast]         = useState({msg:"",show:false});
@@ -374,7 +374,7 @@ function VitalCore() {
 
   function handleLabelSelect(e) {
     const file=e.target.files[0]; if(!file) return; e.target.value="";
-    compressImage(file, p => setLabelPreview(p));
+    compressImage(file, p => setLabelPreviews(prev => prev.length < 4 ? [...prev, p] : prev));
   }
 
   function compressImage(file, callback) {
@@ -396,39 +396,41 @@ function VitalCore() {
     if(!preview) return;
     setAnalyzing(true);
 
-    const hasLabel = !!labelPreview;
-    const prompt = hasLabel
-      ? `You are a precision nutrition label reader. You have been given TWO images:
-Image 1: The FRONT of the product (use this to identify the exact brand and product name).
-Image 2: The SUPPLEMENT/NUTRITION FACTS label (use this to extract EXACT nutrient values).
+    const hasLabels = labelPreviews.length > 0;
+    const labelCount = labelPreviews.length;
+
+    const prompt = hasLabels
+      ? `You are a precision nutrition label reader. You have been given ${1+labelCount} images:
+Image 1: The FRONT of the product — use this to identify the exact brand and product name.
+${labelPreviews.map((_,i)=>`Image ${i+2}: Nutrition/Supplement Facts label panel ${i+1} — extract exact nutrient values from this.`).join('\n')}
 
 CRITICAL RULES:
-1. Use Image 1 for the product name — use the full brand + product name exactly as shown.
-2. Use Image 2 for ALL nutrient values — read every value exactly as printed on the label.
+1. Use Image 1 for the product name only — use the full brand + product name exactly as shown.
+2. Use ALL label images for nutrient values — each image may show different nutrients since the label wraps around the container. Combine values from all label images.
 3. For Vitamin D: convert mcg to IU (1 mcg = 40 IU). E.g. 125 mcg = 5000 IU.
-4. Do NOT estimate — every value must come directly from the label in Image 2.
+4. Do NOT estimate — every value must come directly from the label images.
+5. If a nutrient appears in multiple label images, use the value from the clearest reading.
 
 Return ONLY valid JSON no markdown no backticks:
 {"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
-Values are per 1 serving as defined on the label. vitD in IU. Return 0 if not listed.`
+Values per 1 serving as on the label. vitD in IU. Return 0 only if confirmed not present.`
       : `You are a precision nutrition label reader. Analyze this food/drink/supplement image.
 CRITICAL RULES:
-1. If a nutrition label is visible, read EVERY value EXACTLY as printed. Do not estimate or use averages.
-2. Pay special attention to vitamins and minerals — read the exact mg/mcg/IU amounts, NOT the %DV.
+1. If a nutrition label is visible, read EVERY value EXACTLY as printed. Do not estimate.
+2. Read exact mg/mcg/IU amounts, NOT the %DV.
 3. For Vitamin D: convert mcg to IU (1 mcg = 40 IU). E.g. 125 mcg = 5000 IU.
-4. If you can see the brand name and product name, use that exact name.
-5. Only use estimation if there is absolutely no label visible.
+4. Use the exact brand and product name if visible.
+5. Only estimate if absolutely no label is visible.
 Return ONLY valid JSON no markdown no backticks:
 {"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
 Values per 1 serving. vitD in IU. Return 0 if not listed.`;
 
-    // Build content array — include label image if provided
-    const content = [];
-    content.push({type:"image",source:{type:"base64",media_type:preview.mime,data:preview.base64}});
-    if(hasLabel) {
-      content.push({type:"image",source:{type:"base64",media_type:labelPreview.mime,data:labelPreview.base64}});
-    }
-    content.push({type:"text",text:prompt});
+    // Build content — front photo first, then all label photos, then prompt
+    const content = [
+      {type:"image",source:{type:"base64",media_type:preview.mime,data:preview.base64}},
+      ...labelPreviews.map(lp=>({type:"image",source:{type:"base64",media_type:lp.mime,data:lp.base64}})),
+      {type:"text",text:prompt}
+    ];
 
     try {
       const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -438,9 +440,9 @@ Values per 1 serving. vitD in IU. Return 0 if not listed.`;
       const raw=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
       if(!raw){showToast("No response — try typing instead");return;}
       const n=JSON.parse(raw);
-      if(n.needs_label){setNeedsLabel(true);setPreview(null);setLabelPreview(null);return;}
+      if(n.needs_label){setNeedsLabel(true);setPreview(null);setLabelPreviews([]);return;}
       addItem(n,null,servings);
-      setPreview(null);setLabelPreview(null);setNeedsLabel(false);setServings(1);
+      setPreview(null);setLabelPreviews([]);setNeedsLabel(false);setServings(1);
     } catch(e){showToast("Error: "+String(e.message||e).slice(0,60));}
     finally{setAnalyzing(false);}
   }
@@ -802,52 +804,77 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
 
               {!needsLabel&&(
                 <React.Fragment>
-                  {/* TWO PHOTO SLOTS */}
-                  <div className="vc-photo-row">
-                    {/* Slot 1: Front of product */}
-                    <div className={"vc-photo-slot"+(preview?" filled":"")}
+                  {/* FRONT PHOTO SLOT */}
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:10,color:"#5a6478",textTransform:"uppercase",letterSpacing:1,marginBottom:6,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600}}>Step 1 — Product Front</div>
+                    <div className={"vc-photo-slot"+(preview?" filled":"")} style={{aspectRatio:"16/9"}}
                       onClick={()=>!preview&&cameraRef.current.click()}>
                       {preview?(
                         <React.Fragment>
-                          <img src={preview.dataUrl} alt="front"/>
-                          <div className="vc-photo-slot-badge">Front</div>
-                          <button className="vc-photo-slot-remove"
-                            onClick={e=>{e.stopPropagation();setPreview(null);}}>✕</button>
+                          <img src={preview.dataUrl} alt="front" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          <div className="vc-photo-slot-badge">Front ✓</div>
+                          <button className="vc-photo-slot-remove" onClick={e=>{e.stopPropagation();setPreview(null);}}>✕</button>
                         </React.Fragment>
                       ):(
-                        <div className="vc-photo-slot-empty">
+                        <div className="vc-photo-slot-empty" style={{flexDirection:"row",gap:10}}>
                           <div className="vc-photo-slot-icon">📦</div>
-                          <div className="vc-photo-slot-lbl">Front of product<br/>(name & brand)</div>
-                        </div>
-                      )}
-                    </div>
-                    {/* Slot 2: Nutrition label */}
-                    <div className={"vc-photo-slot"+(labelPreview?" filled":"")}
-                      onClick={()=>!labelPreview&&labelRef.current.click()}>
-                      {labelPreview?(
-                        <React.Fragment>
-                          <img src={labelPreview.dataUrl} alt="label"/>
-                          <div className="vc-photo-slot-badge">Label</div>
-                          <button className="vc-photo-slot-remove"
-                            onClick={e=>{e.stopPropagation();setLabelPreview(null);}}>✕</button>
-                        </React.Fragment>
-                      ):(
-                        <div className="vc-photo-slot-empty">
-                          <div className="vc-photo-slot-icon">🏷️</div>
-                          <div className="vc-photo-slot-lbl">Nutrition label<br/>(optional but precise)</div>
+                          <div className="vc-photo-slot-lbl" style={{textAlign:"left"}}>Tap to snap or choose<br/><span style={{color:"#5a6478"}}>Front of product for name & brand</span></div>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Gallery options if no photos yet */}
-                  {!preview&&!labelPreview&&(
-                    <div className="vc-cam-btns" style={{marginBottom:12}}>
-                      <button className="vc-cam-btn" onClick={()=>galleryRef.current.click()}>
-                        <div className="vc-cam-icon">🖼️</div>
-                        <div className="vc-cam-txt"><span className="vc-cam-ttl">Choose from Gallery</span><span className="vc-cam-sub">Pick product photo</span></div>
-                      </button>
+                  {/* LABEL PHOTOS — shown once front is added */}
+                  {preview&&(
+                    <div style={{marginBottom:14}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                        <div style={{fontSize:10,color:"#5a6478",textTransform:"uppercase",letterSpacing:1,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600}}>
+                          Step 2 — Nutrition Label(s)
+                        </div>
+                        <div style={{fontSize:10,color:"#3a4456"}}>Snap multiple if label wraps around</div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                        {/* Existing label photos */}
+                        {labelPreviews.map((lp,i)=>(
+                          <div key={i} className="vc-photo-slot filled" style={{aspectRatio:"1"}}>
+                            <img src={lp.dataUrl} alt={"label "+(i+1)} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            <div className="vc-photo-slot-badge" style={{fontSize:8,padding:"1px 4px"}}>{i+1}</div>
+                            <button className="vc-photo-slot-remove"
+                              onClick={e=>{e.stopPropagation();setLabelPreviews(prev=>prev.filter((_,j)=>j!==i));}}>✕</button>
+                          </div>
+                        ))}
+                        {/* Add more slot — show if under 4 */}
+                        {labelPreviews.length<4&&(
+                          <div className="vc-photo-slot" style={{aspectRatio:"1"}}
+                            onClick={()=>labelRef.current.click()}>
+                            <div className="vc-photo-slot-empty">
+                              <div className="vc-photo-slot-icon" style={{fontSize:20}}>🏷️</div>
+                              <div className="vc-photo-slot-lbl" style={{fontSize:9}}>
+                                {labelPreviews.length===0?"Add label":"Add more"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {labelPreviews.length===0&&(
+                        <div style={{marginTop:8,fontSize:11,color:"#3a4456",lineHeight:1.5}}>
+                          💡 Optional but recommended for supplements — snap the nutrition facts panel for exact values
+                        </div>
+                      )}
+                      {labelPreviews.length>0&&(
+                        <div style={{marginTop:8,fontSize:11,color:"#5a6478"}}>
+                          {labelPreviews.length} label photo{labelPreviews.length>1?"s":""} added — AI will read all panels
+                        </div>
+                      )}
                     </div>
+                  )}
+
+                  {/* Gallery option when no front photo yet */}
+                  {!preview&&(
+                    <button className="vc-cam-btn" onClick={()=>galleryRef.current.click()}>
+                      <div className="vc-cam-icon">🖼️</div>
+                      <div className="vc-cam-txt"><span className="vc-cam-ttl">Choose from Gallery</span><span className="vc-cam-sub">Pick existing photo</span></div>
+                    </button>
                   )}
 
                   {preview&&(
@@ -861,13 +888,8 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
                         </div>
                       </div>
                       <button className="vc-analyze-btn" onClick={analyzeImage} disabled={analyzing}>
-                        {labelPreview?"Analyze Both & Log":"Analyze & Log"}
+                        {labelPreviews.length>1?"Analyze "+labelPreviews.length+" Labels & Log":labelPreviews.length===1?"Analyze Both & Log":"Analyze & Log"}
                       </button>
-                      {!labelPreview&&(
-                        <div style={{marginTop:10,fontSize:12,color:"#5a6478",textAlign:"center",lineHeight:1.5}}>
-                          💡 Tap the label slot above to add the nutrition facts for higher accuracy
-                        </div>
-                      )}
                     </React.Fragment>
                   )}
                 </React.Fragment>
