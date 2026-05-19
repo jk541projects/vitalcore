@@ -267,7 +267,42 @@ const S = `
 .vc-detail-edit{display:flex;align-items:center;gap:4px;}
 .vc-detail-input{background:#0a0c0f;border:1px solid #00e5a0;border-radius:4px;color:#e8edf2;font-size:12px;font-weight:600;width:60px;padding:2px 6px;text-align:right;outline:none;}
 .vc-detail-save{background:#00e5a0;color:#000;border:none;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;}
-.vc-verify-note{font-size:10px;color:#5a6478;font-style:italic;margin-top:4px;}
+.vc-recipe{padding:0 20px 100px;}
+.vc-recipe-btn{width:100%;background:#00e5a0;color:#000;border:none;border-radius:12px;padding:14px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-bottom:14px;transition:background .2s;}
+.vc-recipe-btn:hover{background:#00ffb3;}
+.vc-recipe-btn.secondary{background:none;border:1px solid #1e2530;color:#5a6478;margin-bottom:0;}
+.vc-recipe-btn.secondary:hover{border-color:#00e5a0;color:#00e5a0;}
+.vc-recipe-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}
+.vc-recipe-card{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;}
+.vc-recipe-icon{font-size:28px;width:50px;height:50px;background:#111418;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid #1e2530;}
+.vc-recipe-det{flex:1;min-width:0;}
+.vc-recipe-name{font-weight:600;font-size:15px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.vc-recipe-meta{font-size:11px;color:#5a6478;}
+.vc-recipe-actions{display:flex;gap:6px;flex-shrink:0;}
+.vc-recipe-log{background:#00e5a0;color:#000;border:none;border-radius:8px;padding:7px 12px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:background .2s;white-space:nowrap;}
+.vc-recipe-log:hover{background:#00ffb3;}
+.vc-recipe-edit{background:none;border:1px solid #1e2530;color:#5a6478;border-radius:8px;padding:7px 10px;font-size:13px;cursor:pointer;transition:all .2s;}
+.vc-recipe-edit:hover{border-color:#4fc3f7;color:#4fc3f7;}
+.vc-recipe-del{background:none;border:none;color:#5a6478;cursor:pointer;font-size:15px;padding:4px;transition:color .2s;}
+.vc-recipe-del:hover{color:#ef4444;}
+.vc-recipe-form{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:14px;}
+.vc-recipe-form-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px;}
+.vc-recipe-input{width:100%;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:10px;transition:border-color .2s;}
+.vc-recipe-input::placeholder{color:#3a4456;}
+.vc-recipe-input:focus{border-color:#00e5a0;}
+.vc-recipe-textarea{width:100%;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;min-height:120px;outline:none;margin-bottom:10px;line-height:1.5;transition:border-color .2s;}
+.vc-recipe-textarea::placeholder{color:#3a4456;}
+.vc-recipe-textarea:focus{border-color:#00e5a0;}
+.vc-recipe-img-btn{width:100%;background:#111418;border:2px dashed #1e2530;border-radius:10px;padding:14px;color:#5a6478;font-size:13px;cursor:pointer;margin-bottom:10px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;}
+.vc-recipe-img-btn:hover{border-color:#00e5a0;color:#00e5a0;}
+.vc-recipe-img-preview{width:100%;border-radius:10px;margin-bottom:10px;display:block;max-height:180px;object-fit:cover;}
+.vc-recipe-nutr{background:#111418;border-radius:10px;padding:12px;margin-bottom:10px;}
+.vc-recipe-nutr-title{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:8px;}
+.vc-recipe-nutr-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.vc-recipe-nutr-item{font-size:11px;color:#8a9ab0;padding:3px 0;}
+.vc-recipe-nutr-item strong{color:#e8edf2;}
+.vc-recipe-empty{text-align:center;padding:40px 20px;color:#5a6478;}
+.vc-recipe-hint{font-size:11px;color:#3a4456;line-height:1.6;margin-bottom:10px;padding:10px 12px;background:#111418;border-radius:8px;}
 .vc-photo-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .vc-photo-slot{border:2px dashed #1e2530;border-radius:12px;overflow:hidden;position:relative;cursor:pointer;transition:border-color .2s;aspect-ratio:1;}
 .vc-photo-slot:hover{border-color:#00e5a0;}
@@ -311,7 +346,16 @@ function VitalCore() {
   const [coachTips, setCoachTips] = useState(null);
   const [coachLoading, setCoachLoading] = useState(false);
 
-  const [expandedItem, setExpandedItem] = useState(null);
+  const [recipes, setRecipes] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("vc_recipes")||"[]"); } catch(e){ return []; }
+  });
+  const [recipeView, setRecipeView] = useState("list"); // "list" | "new" | "view"
+  const [activeRecipe, setActiveRecipe] = useState(null);
+  const [recipeName, setRecipeName] = useState("");
+  const [recipeIngredients, setRecipeIngredients] = useState("");
+  const [recipeServings, setRecipeServings] = useState(1);
+  const [recipeAnalyzing, setRecipeAnalyzing] = useState(false);
+  const recipeImgRef = useRef(null);
   const [editingItem, setEditingItem]   = useState(null); // {id, field, value}
 
   function startEdit(itemId, field, currentVal) {
@@ -543,6 +587,228 @@ Values per 1 serving. vitD in IU. Return 0 if not listed.`;
 
   function delFromLib(id) {
     setLibrary(prev=>{const next=prev.filter(i=>i.id!==id);try{localStorage.setItem("vc_library",JSON.stringify(next));}catch(e){}return next;});
+  }
+
+  function saveRecipe(recipe) {
+    setRecipes(prev=>{
+      const existing = prev.find(r=>r.id===recipe.id);
+      const next = existing ? prev.map(r=>r.id===recipe.id?recipe:r) : [recipe,...prev];
+      try{localStorage.setItem("vc_recipes",JSON.stringify(next));}catch(e){}
+      return next;
+    });
+  }
+
+  function deleteRecipe(id) {
+    setRecipes(prev=>{const next=prev.filter(r=>r.id!==id);try{localStorage.setItem("vc_recipes",JSON.stringify(next));}catch(e){}return next;});
+  }
+
+  function logRecipe(recipe, srv) {
+    addItem({
+      name: recipe.name,
+      emoji: recipe.emoji||"🍽️",
+      ...recipe.nutr
+    }, null, srv||1);
+    showToast("✓ "+recipe.name+" logged");
+  }
+
+  async function analyzeRecipe(name, ingredients, imageData) {
+    setRecipeAnalyzing(true);
+
+    const hasImage = !!imageData;
+    const prompt = `You are a nutrition analysis AI specializing in homemade recipes.
+${hasImage ? "You have been given a photo of a recipe or its ingredients. " : ""}
+${ingredients ? "Ingredients/recipe: "+ingredients : ""}
+Recipe name: "${name}"
+
+Analyze the complete recipe and return nutrition facts per 1 serving.
+Estimate based on standard ingredient amounts if quantities are approximate.
+
+Return ONLY valid JSON no markdown no backticks:
+{"emoji":"single relevant emoji","servingsInRecipe":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
+
+servingsInRecipe = estimated number of servings the full recipe makes.
+All nutrient values are PER SERVING. Return 0 for negligible.`;
+
+    const content = [];
+    if(hasImage) content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:imageData}});
+    content.push({type:"text",text:prompt});
+
+    try {
+      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content}]})});
+      const data=await res.json();
+      if(data.error){showToast("Recipe error: "+String(data.error).slice(0,50));return null;}
+      const raw=(data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+      return JSON.parse(raw);
+    } catch(e){showToast("Recipe error — try again");return null;}
+    finally{setRecipeAnalyzing(false);}
+  }
+
+  function RecipeTab() {
+    const [imgData, setImgData] = useState(null);
+    const [pendingNutr, setPendingNutr] = useState(null);
+    const [logSrvCount, setLogSrvCount] = useState(1);
+
+    function handleRecipeImg(e) {
+      const file=e.target.files[0]; if(!file) return; e.target.value="";
+      compressImage(file, p=>{
+        setImgData(p.base64);
+      });
+    }
+
+    async function handleAnalyze() {
+      if(!recipeName.trim()&&!recipeIngredients.trim()&&!imgData){showToast("Add a name, ingredients, or photo");return;}
+      const nutr = await analyzeRecipe(recipeName||"Custom Recipe", recipeIngredients, imgData);
+      if(nutr) setPendingNutr(nutr);
+    }
+
+    function handleSave() {
+      if(!pendingNutr) return;
+      const recipe = {
+        id: activeRecipe?.id || Date.now(),
+        name: recipeName||"Custom Recipe",
+        emoji: pendingNutr.emoji||"🍽️",
+        ingredients: recipeIngredients,
+        servingsInRecipe: pendingNutr.servingsInRecipe||1,
+        nutr: {
+          calories:+pendingNutr.calories||0, protein:+pendingNutr.protein||0,
+          carbs:+pendingNutr.carbs||0, fat:+pendingNutr.fat||0,
+          fiber:+pendingNutr.fiber||0, sodium:+pendingNutr.sodium||0,
+          calcium:+pendingNutr.calcium||0, magnesium:+pendingNutr.magnesium||0,
+          vitD:+pendingNutr.vitD||0, vitC:+pendingNutr.vitC||0,
+          potassium:+pendingNutr.potassium||0, zinc:+pendingNutr.zinc||0,
+          sugar:+pendingNutr.sugar||0,
+        },
+        createdAt: Date.now(),
+      };
+      saveRecipe(recipe);
+      // Reset form
+      setRecipeName("");setRecipeIngredients("");setImgData(null);setPendingNutr(null);setActiveRecipe(null);
+      setRecipeView("list");
+      showToast("✓ "+recipe.name+" saved to recipes");
+    }
+
+    function openEdit(recipe) {
+      setActiveRecipe(recipe);
+      setRecipeName(recipe.name);
+      setRecipeIngredients(recipe.ingredients||"");
+      setPendingNutr({...recipe.nutr, emoji:recipe.emoji, servingsInRecipe:recipe.servingsInRecipe});
+      setImgData(null);
+      setRecipeView("new");
+    }
+
+    function openNew() {
+      setActiveRecipe(null);
+      setRecipeName("");setRecipeIngredients("");setImgData(null);setPendingNutr(null);
+      setRecipeView("new");
+    }
+
+    if(recipeView==="new") return (
+      <div className="vc-recipe">
+        <div className="vc-recipe-form">
+          <div className="vc-recipe-form-title">{activeRecipe?"Edit Recipe":"New Recipe"}</div>
+
+          <input className="vc-recipe-input" placeholder="Recipe name (e.g. Homemade Breakfast Tacos)"
+            value={recipeName} onChange={e=>setRecipeName(e.target.value)}/>
+
+          <div className="vc-recipe-hint">
+            📝 List your ingredients with amounts, or just describe the dish. The more detail you give, the more accurate the estimate.
+          </div>
+
+          <textarea className="vc-recipe-textarea"
+            placeholder={"e.g.\n3 eggs\n3 strips bacon\n2 corn tortillas (fried)\n1/4 cup O'Brien potatoes\n2 tbsp shredded cheddar"}
+            value={recipeIngredients} onChange={e=>setRecipeIngredients(e.target.value)}/>
+
+          {imgData ? (
+            <div style={{position:"relative",marginBottom:10}}>
+              <img src={"data:image/jpeg;base64,"+imgData} className="vc-recipe-img-preview" alt="recipe"/>
+              <button onClick={()=>setImgData(null)}
+                style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.7)",color:"#e8edf2",border:"none",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontSize:12}}>
+                Remove
+              </button>
+            </div>
+          ):(
+            <button className="vc-recipe-img-btn" onClick={()=>recipeImgRef.current.click()}>
+              📷 Snap or upload recipe / ingredients photo (optional)
+            </button>
+          )}
+
+          {pendingNutr&&(
+            <div className="vc-recipe-nutr">
+              <div className="vc-recipe-nutr-title">Estimated per serving ({pendingNutr.servingsInRecipe||1} servings total)</div>
+              <div className="vc-recipe-nutr-grid">
+                {Object.entries(TARGETS).map(([key,cfg])=>(
+                  <div className="vc-recipe-nutr-item" key={key}>
+                    {cfg.label}: <strong>{Math.round(pendingNutr[key]||0)}{cfg.unit}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button className="vc-recipe-btn" onClick={handleAnalyze} disabled={recipeAnalyzing}>
+            {recipeAnalyzing?"Analyzing…":"🔍 Estimate Nutrition"}
+          </button>
+
+          {pendingNutr&&(
+            <button className="vc-recipe-btn" onClick={handleSave} style={{background:"#4fc3f7",marginBottom:8}}>
+              💾 Save Recipe
+            </button>
+          )}
+
+          <button className="vc-recipe-btn secondary" onClick={()=>{setRecipeView("list");setActiveRecipe(null);}}>
+            ← Back
+          </button>
+        </div>
+        <input ref={recipeImgRef} type="file" accept="image/*" onChange={handleRecipeImg} style={{display:"none"}}/>
+      </div>
+    );
+
+    // LIST VIEW
+    return (
+      <div className="vc-recipe">
+        <button className="vc-recipe-btn" onClick={openNew}>+ New Recipe</button>
+
+        {recipes.length===0?(
+          <div className="vc-recipe-empty">
+            <div style={{fontSize:36,marginBottom:12}}>👨‍🍳</div>
+            <p style={{fontSize:14,lineHeight:1.7}}>Save your homemade recipes here.<br/>Add ingredients and the AI estimates<br/>the nutrition per serving.</p>
+          </div>
+        ):recipes.map(recipe=>(
+          <div className="vc-recipe-card" key={recipe.id}>
+            <div className="vc-recipe-icon">{recipe.emoji}</div>
+            <div className="vc-recipe-det">
+              <div className="vc-recipe-name">{recipe.name}</div>
+              <div className="vc-recipe-meta">
+                {Math.round(recipe.nutr.calories)} kcal · {Math.round(recipe.nutr.protein)}g protein · {recipe.servingsInRecipe} servings
+              </div>
+            </div>
+            <div className="vc-recipe-actions">
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:5}}>
+                  <button className="vc-isb" onClick={()=>{
+                    const curr=parseInt(recipe._logSrv||1);
+                    saveRecipe({...recipe,_logSrv:Math.max(0.5,+(curr-.5).toFixed(1))});
+                  }} style={{width:24,height:24,fontSize:14}}>−</button>
+                  <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,minWidth:20,textAlign:"center",fontSize:14}}>
+                    {recipe._logSrv||1}
+                  </span>
+                  <button className="vc-isb" onClick={()=>{
+                    const curr=parseFloat(recipe._logSrv||1);
+                    saveRecipe({...recipe,_logSrv:Math.min(10,+(curr+.5).toFixed(1))});
+                  }} style={{width:24,height:24,fontSize:14}}>+</button>
+                </div>
+                <button className="vc-recipe-log" onClick={()=>logRecipe(recipe,recipe._logSrv||1)}>Log</button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <button className="vc-recipe-edit" onClick={()=>openEdit(recipe)}>✏️</button>
+                <button className="vc-recipe-del" onClick={()=>{if(window.confirm("Delete "+recipe.name+"?"))deleteRecipe(recipe.id);}}>✕</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   function statusFor(key,val) {
@@ -858,6 +1124,7 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
           <button className={"vc-tab"+(tab==="camera"?" active":"")} onClick={()=>setTab("camera")}>📷 Camera</button>
           <button className={"vc-tab"+(tab==="text"?" active":"")} onClick={()=>setTab("text")}>✏️ Type</button>
           <button className={"vc-tab"+(tab==="library"?" active":"")} onClick={()=>setTab("library")}>📚 Library</button>
+          <button className={"vc-tab"+(tab==="recipes"?" active":"")} onClick={()=>setTab("recipes")}>👨‍🍳 Recipes</button>
           <button className={"vc-tab"+(tab==="history"?" active":"")} onClick={()=>setTab("history")}>📈 History</button>
           <button className={"vc-tab"+(tab==="coach"?" active":"")} onClick={()=>{setCoachTips(null);setTab("coach");}}>🤖 Coach</button>
         </div>
@@ -1025,6 +1292,7 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
         )}
 
         {tab==="history"&&<HistoryTab/>}
+        {tab==="recipes"&&<RecipeTab/>}
         {tab==="coach"&&<CoachTab/>}
 
         <div className="vc-nutrients">
