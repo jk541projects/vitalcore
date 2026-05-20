@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VitalCore — Data Migration</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0a0c0f;color:#e8edf2;font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.card{background:#161b22;border:1px solid #1e2530;border-radius:20px;padding:28px;max-width:460px;width:100%;}
+.logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#00e5a0;margin-bottom:4px;}
+.logo span{color:#e8edf2;}
+.subtitle{font-size:13px;color:#5a6478;margin-bottom:24px;}
+.section{margin-bottom:20px;}
+.label{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:8px;display:block;}
+.data-preview{background:#111418;border:1px solid #1e2530;border-radius:10px;padding:12px 14px;font-size:12px;color:#5a6478;margin-bottom:4px;}
+.data-preview.found{border-color:#00e5a0;color:#00e5a0;}
+.data-preview.missing{border-color:#3a4456;color:#3a4456;}
+.input{width:100%;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:12px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color .2s;margin-bottom:10px;}
+.input:focus{border-color:#00e5a0;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+.type-btn{background:#111418;border:1px solid #1e2530;border-radius:8px;padding:10px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .18s;color:#5a6478;text-align:center;}
+.type-btn.active{background:#00e5a0;color:#000;border-color:#00e5a0;}
+.migrate-btn{width:100%;background:#00e5a0;color:#000;border:none;border-radius:12px;padding:16px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:background .2s;margin-top:4px;}
+.migrate-btn:hover{background:#00ffb3;}
+.migrate-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}
+.result{border-radius:12px;padding:16px;margin-top:16px;display:none;}
+.result.success{background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.3);}
+.result.error{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);}
+.result-icon{font-size:28px;margin-bottom:8px;}
+.result-title{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.result.success .result-title{color:#00e5a0;}
+.result.error .result-title{color:#ef4444;}
+.result-body{font-size:13px;color:#8a9ab0;line-height:1.6;}
+.open-btn{display:inline-block;margin-top:14px;background:#00e5a0;color:#000;border-radius:8px;padding:10px 20px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:1px;text-decoration:none;text-transform:uppercase;}
+.divider{height:1px;background:#1e2530;margin:20px 0;}
+.note{font-size:11px;color:#3a4456;line-height:1.6;padding:10px 12px;background:#111418;border-radius:8px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Vital<span>Core</span></div>
+  <div class="subtitle">One-time data migration tool</div>
+
+  <!-- STEP 1: SCAN -->
+  <div class="section">
+    <span class="label">Step 1 — Data Found in This Browser</span>
+    <div class="data-preview" id="prev-log">Checking log data…</div>
+    <div class="data-preview" id="prev-history">Checking history…</div>
+    <div class="data-preview" id="prev-library">Checking library…</div>
+    <div class="data-preview" id="prev-recipes">Checking recipes…</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- STEP 2: PROFILE -->
+  <div class="section">
+    <span class="label">Step 2 — Create Your Profile</span>
+    <input class="input" id="profile-name" placeholder="Your name (e.g. Jason)" value="Jason"/>
+    <div class="grid">
+      <button class="type-btn active" data-type="adult_male" onclick="selectType(this)">Adult Male</button>
+      <button class="type-btn" data-type="adult_female" onclick="selectType(this)">Adult Female</button>
+      <button class="type-btn" data-type="teen" onclick="selectType(this)">Teen (9–18)</button>
+      <button class="type-btn" data-type="child" onclick="selectType(this)">Child (4–8)</button>
+    </div>
+  </div>
+
+  <div class="note">
+    ⚠️ This migration must be run from the <strong>same browser and device</strong> where you used the old app. It copies your data into your new profile and leaves the original keys intact so nothing is deleted.
+  </div>
+
+  <button class="migrate-btn" id="migrate-btn" onclick="runMigration()">Import My Data →</button>
+
+  <div class="result" id="result">
+    <div class="result-icon" id="result-icon"></div>
+    <div class="result-title" id="result-title"></div>
+    <div class="result-body" id="result-body"></div>
+    <a href="https://jk541projects.github.io/vitalcore" class="open-btn" id="open-btn" style="display:none">Open VitalCore →</a>
+  </div>
+</div>
+
+<script>
+let selectedType = "adult_male";
+
+function selectType(btn) {
+  document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedType = btn.dataset.type;
+}
+
+// Scan existing data on load
+window.addEventListener('load', () => {
+  scan('vc_log',      'prev-log',     d => {
+    const parsed = JSON.parse(d);
+    const items = parsed.items||[];
+    return items.length > 0 ? `✓ Today's log — ${items.length} item${items.length>1?'s':''} (${parsed.date||'unknown date'})` : '— Log is empty';
+  });
+  scan('vc_history',  'prev-history', d => {
+    const arr = JSON.parse(d);
+    return arr.length > 0 ? `✓ History — ${arr.length} day${arr.length>1?'s':''} of data` : '— No history yet';
+  });
+  scan('vc_library',  'prev-library', d => {
+    const arr = JSON.parse(d);
+    return arr.length > 0 ? `✓ Food library — ${arr.length} saved item${arr.length>1?'s':''}` : '— Library is empty';
+  });
+  scan('vc_recipes',  'prev-recipes', d => {
+    const arr = JSON.parse(d);
+    return arr.length > 0 ? `✓ Recipes — ${arr.length} saved recipe${arr.length>1?'s':''}` : '— No recipes saved';
+  });
+});
+
+function scan(key, elId, formatter) {
+  const el = document.getElementById(elId);
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) { el.textContent = '— ' + key + ': no data found'; el.className = 'data-preview missing'; return; }
+    el.textContent = formatter(raw);
+    el.className = 'data-preview found';
+  } catch(e) {
+    el.textContent = '— ' + key + ': could not read';
+    el.className = 'data-preview missing';
+  }
+}
+
+function getProfiles() { try { return JSON.parse(localStorage.getItem('vc_profiles')||'[]'); } catch(e) { return []; } }
+function saveProfiles(p) { localStorage.setItem('vc_profiles', JSON.stringify(p)); }
+function uKey(uid, key) { return 'vc_' + key + '_' + uid; }
+
+function runMigration() {
+  const name = document.getElementById('profile-name').value.trim();
+  if (!name) { alert('Please enter your name.'); return; }
+
+  const btn = document.getElementById('migrate-btn');
+  btn.disabled = true; btn.textContent = 'Migrating…';
+
+  try {
+    // Create profile
+    const profile = {
+      id: Date.now().toString(),
+      name,
+      type: selectedType,
+      createdAt: Date.now()
+    };
+
+    // Check if profile with same name already exists
+    const existing = getProfiles();
+    const duplicate = existing.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+      if (!confirm(`A profile named "${name}" already exists. Overwrite its data?`)) {
+        btn.disabled = false; btn.textContent = 'Import My Data →';
+        return;
+      }
+      profile.id = duplicate.id; // reuse existing ID
+      saveProfiles(existing.map(p => p.id === duplicate.id ? profile : p));
+    } else {
+      saveProfiles([...existing, profile]);
+    }
+
+    // Set as active profile
+    localStorage.setItem('vc_active_profile', profile.id);
+
+    // Migrate each data type
+    const uid = profile.id;
+    const migrated = [];
+
+    const log = localStorage.getItem('vc_log');
+    if (log) { localStorage.setItem(uKey(uid,'log'), log); migrated.push('today\'s log'); }
+
+    const history = localStorage.getItem('vc_history');
+    if (history) {
+      const arr = JSON.parse(history);
+      if (arr.length > 0) { localStorage.setItem(uKey(uid,'history'), history); migrated.push(arr.length + ' days of history'); }
+    }
+
+    const library = localStorage.getItem('vc_library');
+    if (library) {
+      const arr = JSON.parse(library);
+      if (arr.length > 0) { localStorage.setItem(uKey(uid,'library'), library); migrated.push(arr.length + ' library items'); }
+    }
+
+    const recipes = localStorage.getItem('vc_recipes');
+    if (recipes) {
+      const arr = JSON.parse(recipes);
+      if (arr.length > 0) { localStorage.setItem(uKey(uid,'recipes'), recipes); migrated.push(arr.length + ' recipes'); }
+    }
+
+    // Show success
+    const result = document.getElementById('result');
+    result.className = 'result success';
+    result.style.display = 'block';
+    document.getElementById('result-icon').textContent = '🎉';
+    document.getElementById('result-title').textContent = 'Migration Complete!';
+    document.getElementById('result-body').textContent =
+      migrated.length > 0
+        ? `Successfully imported ${migrated.join(', ')} into ${name}'s profile. Open VitalCore and you'll be logged in as ${name} with all your data intact.`
+        : `Profile "${name}" created. No existing data was found to migrate — you're starting fresh.`;
+    document.getElementById('open-btn').style.display = 'inline-block';
+    btn.textContent = '✓ Done';
+
+  } catch(e) {
+    const result = document.getElementById('result');
+    result.className = 'result error';
+    result.style.display = 'block';
+    document.getElementById('result-icon').textContent = '⚠️';
+    document.getElementById('result-title').textContent = 'Migration Failed';
+    document.getElementById('result-body').textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Try Again';
+  }
+}
+</script>
+</body>
+</html>
