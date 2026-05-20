@@ -12,181 +12,267 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; background: #0a0c0f; }
-#root { height: 100%; }
-</style>
+<style>*{box-sizing:border-box;margin:0;padding:0;}html,body{height:100%;background:#0a0c0f;}#root{height:100%;}</style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useRef, useCallback } = React;
+const { useState, useRef, useCallback, useEffect } = React;
 
 const WORKER_URL = "https://vitalcore-proxy.jason-knight-541.workers.dev";
 
-const TARGETS = {
-  calories:  { label:"Calories",  unit:"kcal", goal:2200, color:"#f59e0b" },
-  protein:   { label:"Protein",   unit:"g",    goal:160,  color:"#00e5a0" },
-  carbs:     { label:"Carbs",     unit:"g",    goal:200,  color:"#4fc3f7" },
-  fat:       { label:"Fat",       unit:"g",    goal:65,   color:"#ff6b35" },
-  fiber:     { label:"Fiber",     unit:"g",    goal:30,   color:"#00e5a0" },
-  sodium:    { label:"Sodium",    unit:"mg",   goal:2300, color:"#ff6b35" },
-  calcium:   { label:"Calcium",   unit:"mg",   goal:1000, color:"#4fc3f7" },
-  magnesium: { label:"Magnesium", unit:"mg",   goal:420,  color:"#4fc3f7" },
-  vitD:      { label:"Vitamin D", unit:"IU",   goal:600,  color:"#f59e0b" },
-  vitC:      { label:"Vitamin C", unit:"mg",   goal:90,   color:"#f59e0b" },
-  potassium: { label:"Potassium", unit:"mg",   goal:3500, color:"#00e5a0" },
-  zinc:      { label:"Zinc",      unit:"mg",   goal:11,   color:"#00e5a0" },
-  sugar:     { label:"Sugar",     unit:"g",    goal:50,   color:"#ff6b35" },
+// ── PROFILE TARGETS ────────────────────────────────────────────
+const PROFILE_TARGETS = {
+  adult_male:   { calories:2200, protein:160, carbs:200, fat:65,  fiber:30, sodium:2300, calcium:1000, magnesium:420, vitD:600, vitC:90,  potassium:3500, zinc:11, sugar:50 },
+  adult_female: { calories:1800, protein:110, carbs:180, fat:55,  fiber:25, sodium:2300, calcium:1000, magnesium:320, vitD:600, vitC:75,  potassium:2600, zinc:8,  sugar:40 },
+  child:        { calories:1800, protein:52,  carbs:240, fat:60,  fiber:26, sodium:1900, calcium:1300, magnesium:240, vitD:600, vitC:45,  potassium:2300, zinc:8,  sugar:25 },
+  teen:         { calories:2200, protein:75,  carbs:250, fat:70,  fiber:28, sodium:2300, calcium:1300, magnesium:360, vitD:600, vitC:75,  potassium:3000, zinc:11, sugar:35 },
 };
-const NUTR_KEYS = Object.keys(TARGETS);
-const EMPTY = () => Object.fromEntries(NUTR_KEYS.map(k => [k, 0]));
+
+const NUTR_META = {
+  calories:  { label:"Calories",  unit:"kcal", color:"#f59e0b", canExceed:false },
+  protein:   { label:"Protein",   unit:"g",    color:"#00e5a0", canExceed:true  },
+  carbs:     { label:"Carbs",     unit:"g",    color:"#4fc3f7", canExceed:false },
+  fat:       { label:"Fat",       unit:"g",    color:"#ff6b35", canExceed:false },
+  fiber:     { label:"Fiber",     unit:"g",    color:"#00e5a0", canExceed:true  },
+  sodium:    { label:"Sodium",    unit:"mg",   color:"#ff6b35", canExceed:false },
+  calcium:   { label:"Calcium",   unit:"mg",   color:"#4fc3f7", canExceed:false },
+  magnesium: { label:"Magnesium", unit:"mg",   color:"#4fc3f7", canExceed:true  },
+  vitD:      { label:"Vitamin D", unit:"IU",   color:"#f59e0b", canExceed:false },
+  vitC:      { label:"Vitamin C", unit:"mg",   color:"#f59e0b", canExceed:true  },
+  potassium: { label:"Potassium", unit:"mg",   color:"#00e5a0", canExceed:true  },
+  zinc:      { label:"Zinc",      unit:"mg",   color:"#00e5a0", canExceed:false },
+  sugar:     { label:"Sugar",     unit:"g",    color:"#ff6b35", canExceed:false },
+};
+const NUTR_KEYS = Object.keys(NUTR_META);
+const EMPTY = () => Object.fromEntries(NUTR_KEYS.map(k=>[k,0]));
 const fmt = v => Number.isInteger(v) ? v : +v.toFixed(1);
 
-const EXAMPLES = [
-  "Premier Protein chocolate shake",
-  "2 scrambled eggs + toast",
-  "6oz grilled chicken breast",
-  "Magnesium glycinate 2 caps",
-  "Quarter-pound burger",
-  "Greek yogurt with berries",
-];
-
-// Which nutrients are safe to exceed vs need caution
-const NUTRIENT_CONTEXT = {
-  calories:  { canExceed:false, note:"Excess calories are stored as fat over time." },
-  protein:   { canExceed:true,  note:"Going over on protein is generally fine and supports muscle building." },
-  carbs:     { canExceed:false, note:"Excess carbs raise blood sugar and can contribute to fat storage." },
-  fat:       { canExceed:false, note:"Watch total fat — focus on healthy sources like nuts and avocado." },
-  fiber:     { canExceed:true,  note:"More fiber is almost always beneficial for digestion and heart health." },
-  sodium:    { canExceed:false, note:"Too much sodium raises blood pressure. This one matters." },
-  calcium:   { canExceed:false, note:"Very high calcium from supplements can cause kidney stones. Food sources are fine." },
-  magnesium: { canExceed:true,  note:"Hard to get too much magnesium from food. Excess supplements may cause loose stools." },
-  vitD:      { canExceed:false, note:"Vitamin D is fat-soluble — it builds up in the body, so don't consistently go way over." },
-  vitC:      { canExceed:true,  note:"Vitamin C is water-soluble — your body flushes excess. Going over is no problem." },
-  potassium: { canExceed:true,  note:"More potassium is generally good — it helps offset sodium and supports heart health." },
-  zinc:      { canExceed:false, note:"Chronic excess zinc can deplete copper levels. Stick near the goal." },
-  sugar:     { canExceed:false, note:"Added sugar is one of the biggest drivers of inflammation and energy crashes." },
+const PROFILE_TYPE_LABELS = {
+  adult_male:"Adult Male", adult_female:"Adult Female", child:"Child (4–8)", teen:"Teen (9–18)"
 };
 
-const S = `.vc{background:#0a0c0f;color:#e8edf2;font-family:'DM Sans',sans-serif;min-height:100vh;max-width:480px;margin:0 auto;}.vc-hdr{padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between;}.vc-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:26px;letter-spacing:2px;text-transform:uppercase;color:#00e5a0;}.vc-logo span{color:#e8edf2;}.vc-date{background:#161b22;border:1px solid #1e2530;border-radius:20px;padding:6px 14px;font-size:12px;color:#5a6478;}.vc-sum{padding:20px;}.vc-sum-card{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:20px;}.vc-ring{position:relative;width:110px;height:110px;flex-shrink:0;}.vc-ring svg{transform:rotate(-90deg);}.vc-ring-ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}.vc-ring-pct{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:#00e5a0;line-height:1;}.vc-ring-lbl{font-size:9px;color:#5a6478;text-transform:uppercase;letter-spacing:1px;margin-top:2px;}.vc-sum-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;}.vc-chips{display:flex;gap:8px;flex-wrap:wrap;}.vc-chip{background:#111418;border:1px solid #1e2530;border-radius:8px;padding:6px 10px;}.vc-chip-v{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;display:block;line-height:1;}.vc-chip-l{color:#5a6478;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}.vc-tabs{display:flex;gap:6px;padding:0 20px 16px;border-bottom:1px solid #1e2530;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}.vc-tabs::-webkit-scrollbar{display:none;}.vc-tab{background:none;border:1px solid #1e2530;color:#5a6478;padding:8px 14px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:all .18s;border-radius:8px;white-space:nowrap;flex-shrink:0;}.vc-tab.active{background:#00e5a0;color:#000;border-color:#00e5a0;}.vc-cam-wrap{padding:20px;}.vc-cam-card{background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:20px;}.vc-cam-label{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:14px;display:block;}.vc-cam-btns{display:flex;flex-direction:column;gap:10px;}.vc-cam-btn{display:flex;align-items:center;gap:14px;background:#111418;border:1px solid #1e2530;border-radius:14px;padding:16px;cursor:pointer;width:100%;text-align:left;transition:border-color .18s,background .18s;color:#e8edf2;}.vc-cam-btn:hover{border-color:#00e5a0;background:rgba(0,229,160,.06);}.vc-cam-icon{font-size:26px;width:46px;height:46px;background:#161b22;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}.vc-cam-txt{flex:1;}.vc-cam-ttl{font-size:15px;font-weight:600;display:block;}.vc-cam-sub{font-size:12px;color:#5a6478;display:block;margin-top:2px;}.vc-preview{width:100%;border-radius:12px;border:1px solid #1e2530;margin-bottom:14px;display:block;}.vc-analyze-btn{width:100%;background:#00e5a0;color:#000;border:none;border-radius:10px;padding:16px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:background .2s;}.vc-analyze-btn:hover{background:#00ffb3;}.vc-analyze-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}.vc-divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:#5a6478;font-size:12px;}.vc-divider::before,.vc-divider::after{content:'';flex:1;height:1px;background:#1e2530;}.vc-label-prompt{background:#161b22;border:1px solid #f59e0b;border-radius:14px;padding:18px;text-align:center;}.vc-lp-icon{font-size:32px;margin-bottom:10px;}.vc-lp-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}.vc-lp-sub{font-size:13px;color:#5a6478;line-height:1.5;margin-bottom:14px;}.vc-lp-btn{background:#f59e0b;color:#000;border:none;border-radius:10px;padding:12px 20px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;width:100%;}.vc-input-wrap{padding:0 20px 20px;}.vc-input-card{background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:16px;}.vc-input-label{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:10px;display:block;}.vc-input-row{display:flex;gap:10px;align-items:flex-end;}.vc-textarea{flex:1;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:12px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;resize:none;min-height:52px;max-height:120px;line-height:1.5;outline:none;transition:border-color .2s;}.vc-textarea::placeholder{color:#3a4456;}.vc-textarea:focus{border-color:#00e5a0;}.vc-log-btn{background:#00e5a0;color:#000;border:none;border-radius:10px;padding:14px 18px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:background .2s;flex-shrink:0;}.vc-log-btn:hover{background:#00ffb3;}.vc-log-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}.vc-srv-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid #1e2530;}.vc-srv-label{font-size:12px;color:#5a6478;}.vc-srv-ctrl{display:flex;align-items:center;}.vc-srv-btn{width:32px;height:32px;background:#111418;border:1px solid #1e2530;color:#e8edf2;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;user-select:none;}.vc-srv-btn:first-child{border-radius:8px 0 0 8px;}.vc-srv-btn:last-child{border-radius:0 8px 8px 0;}.vc-srv-btn:hover{background:#1e2530;color:#00e5a0;}.vc-srv-btn:disabled{opacity:.3;cursor:not-allowed;}.vc-srv-val{min-width:40px;height:32px;background:#111418;border-top:1px solid #1e2530;border-bottom:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;}.vc-examples{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}.vc-ex{background:#111418;border:1px solid #1e2530;border-radius:20px;padding:5px 12px;font-size:11px;color:#5a6478;cursor:pointer;transition:all .18s;white-space:nowrap;}.vc-ex:hover{border-color:#00e5a0;color:#00e5a0;}.vc-analyzing{position:fixed;inset:0;background:rgba(10,12,15,.93);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;}.vc-pulse{width:80px;height:80px;border-radius:50%;border:3px solid #00e5a0;animation:vcp 1.2s ease-in-out infinite;}@keyframes vcp{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.18);opacity:.4;}}.vc-at{font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#00e5a0;}.vc-as{font-size:13px;color:#5a6478;}.vc-nutrients{padding:0 20px 20px;}.vc-sec{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px;}.vc-nlist{display:flex;flex-direction:column;gap:10px;}.vc-nitem{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px;}.vc-nhdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}.vc-nname{font-size:13px;font-weight:500;}.vc-nvals{font-size:12px;color:#5a6478;}.vc-nvals strong{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:#e8edf2;}.vc-track{height:6px;background:#111418;border-radius:3px;overflow:hidden;}.vc-fill{height:100%;border-radius:3px;transition:width .9s cubic-bezier(.34,1.56,.64,1);}.vc-nst{font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-top:5px;font-weight:500;}.vc-log{padding:0 20px 100px;}.vc-log-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}.vc-rst{background:none;border:1px solid #1e2530;color:#5a6478;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;}.vc-rst:hover{border-color:#ef4444;color:#ef4444;}.vc-llist{display:flex;flex-direction:column;gap:10px;}.vc-empty{text-align:center;padding:40px 20px;color:#5a6478;}.vc-ei{font-size:40px;margin-bottom:12px;}.vc-empty p{font-size:14px;line-height:1.6;}.vc-litem{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;animation:vci .3s ease;}@keyframes vci{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}.vc-licon{width:48px;height:48px;border-radius:10px;background:#111418;border:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;}.vc-ldet{flex:1;min-width:0;}.vc-lname{font-weight:600;font-size:14px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.vc-ltime{font-size:11px;color:#5a6478;margin-bottom:7px;}.vc-ltags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}.vc-tag{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500;}.vc-tp{background:rgba(0,229,160,.12);color:#00e5a0;}.vc-tc{background:rgba(79,195,247,.12);color:#4fc3f7;}.vc-tf{background:rgba(255,107,53,.12);color:#ff6b35;}.vc-tk{background:rgba(245,158,11,.12);color:#f59e0b;}.vc-item-srv{display:flex;align-items:center;gap:8px;}.vc-item-srv-label{font-size:11px;color:#5a6478;text-transform:uppercase;letter-spacing:.5px;}.vc-isb{width:28px;height:28px;background:#111418;border:1px solid #1e2530;color:#e8edf2;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:all .15s;user-select:none;flex-shrink:0;}.vc-isb:hover{background:#1e2530;border-color:#00e5a0;color:#00e5a0;}.vc-isb:disabled{opacity:.3;cursor:not-allowed;}.vc-isv{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;min-width:28px;text-align:center;}.vc-lright{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;}.vc-del{background:none;border:none;color:#5a6478;cursor:pointer;font-size:15px;padding:4px;line-height:1;transition:color .2s;}.vc-del:hover{color:#ef4444;}.vc-lib{padding:0 20px 100px;}.vc-lib-search{background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;width:100%;margin-bottom:14px;transition:border-color .2s;}.vc-lib-search::placeholder{color:#3a4456;}.vc-lib-search:focus{border-color:#00e5a0;}.vc-lib-item{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:10px;}.vc-lib-icon{width:42px;height:42px;border-radius:8px;background:#111418;border:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}.vc-lib-det{flex:1;min-width:0;}.vc-lib-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.vc-lib-macros{font-size:11px;color:#5a6478;margin-top:2px;}.vc-lib-add{background:#00e5a0;color:#000;border:none;border-radius:8px;padding:8px 14px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer;flex-shrink:0;transition:background .2s;}.vc-lib-add:hover{background:#00ffb3;}.vc-lib-del{background:none;border:none;color:#5a6478;cursor:pointer;font-size:14px;padding:4px;transition:color .2s;flex-shrink:0;}.vc-lib-del:hover{color:#ef4444;}.vc-hist{padding:0 20px 100px;}.vc-hist-empty{text-align:center;padding:40px 20px;color:#5a6478;}.vc-hist-section{margin-bottom:24px;}.vc-hist-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px;}.vc-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px;}.vc-cal-lbl{font-size:9px;color:#3a4456;text-align:center;text-transform:uppercase;padding:2px 0;}.vc-cal-day{aspect-ratio:1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;}.vc-cal-day.empty{background:transparent;}.vc-cal-day.nodata{background:#111418;color:#3a4456;}.vc-cal-day.great{background:rgba(0,229,160,.25);color:#00e5a0;}.vc-cal-day.good{background:rgba(0,229,160,.12);color:#00b880;}.vc-cal-day.low{background:rgba(245,158,11,.15);color:#f59e0b;}.vc-cal-day.over{background:rgba(239,68,68,.15);color:#ef4444;}.vc-cal-day.selected{outline:2px solid #00e5a0;}.vc-cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;}.vc-cal-legend-item{display:flex;align-items:center;gap:4px;font-size:10px;color:#5a6478;}.vc-cal-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}.vc-chart{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;margin-bottom:12px;}.vc-chart-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}.vc-chart-title{font-size:13px;font-weight:600;color:#e8edf2;}.vc-chart-goal{font-size:10px;color:#5a6478;}.vc-chart-bars{display:flex;align-items:flex-end;gap:3px;height:64px;}.vc-chart-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}.vc-chart-bar{width:100%;border-radius:3px 3px 0 0;min-height:2px;}.vc-chart-lbl{font-size:8px;color:#3a4456;text-align:center;}.vc-chart-legend{display:flex;gap:10px;margin-top:8px;font-size:10px;}.vc-day-card{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;margin-bottom:16px;}.vc-day-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}.vc-day-date{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;}.vc-day-cal{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:#f59e0b;}.vc-day-nuts{display:flex;flex-wrap:wrap;gap:5px;}.vc-dnut{font-size:10px;padding:3px 8px;border-radius:4px;font-weight:500;}.vc-dnut-hit{background:rgba(0,229,160,.12);color:#00e5a0;}.vc-dnut-miss{background:#111418;color:#5a6478;}.vc-dnut-over{background:rgba(245,158,11,.12);color:#f59e0b;}.vc-avg-item{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px;margin-bottom:8px;}.vc-coach{padding:0 20px 100px;}.vc-coach-btn{width:100%;background:#00e5a0;color:#000;border:none;border-radius:14px;padding:18px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px;}.vc-coach-btn:hover{background:#00ffb3;}.vc-coach-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}.vc-coach-empty{text-align:center;padding:30px 20px;color:#5a6478;background:#161b22;border:1px solid #1e2530;border-radius:16px;}.vc-coach-empty-icon{font-size:36px;margin-bottom:12px;}.vc-coach-tip{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:12px;animation:vci .3s ease;}.vc-coach-tip.warn{border-color:#ef4444;}.vc-coach-tip.caution{border-color:#f59e0b;}.vc-coach-tip.good{border-color:#00e5a0;}.vc-coach-tip.info{border-color:#4fc3f7;}.vc-coach-tip-hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px;}.vc-coach-tip-icon{font-size:22px;flex-shrink:0;}.vc-coach-tip-title{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.5px;}.vc-coach-tip.warn .vc-coach-tip-title{color:#ef4444;}.vc-coach-tip.caution .vc-coach-tip-title{color:#f59e0b;}.vc-coach-tip.good .vc-coach-tip-title{color:#00e5a0;}.vc-coach-tip.info .vc-coach-tip-title{color:#4fc3f7;}.vc-coach-tip-body{font-size:13px;color:#8a9ab0;line-height:1.6;}.vc-coach-summary{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:16px;}.vc-coach-summary-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:10px;}.vc-coach-summary-text{font-size:14px;color:#e8edf2;line-height:1.7;}.vc-coach-loading{text-align:center;padding:30px;color:#5a6478;}.vc-coach-loading-pulse{width:50px;height:50px;border-radius:50%;border:3px solid #00e5a0;animation:vcp 1.2s ease-in-out infinite;margin:0 auto 14px;}.vc-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#161b22;border:1px solid #00e5a0;border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;color:#00e5a0;transition:transform .3s ease;z-index:500;white-space:nowrap;pointer-events:none;}.vc-toast.show{transform:translateX(-50%) translateY(0);}.vc-expand-btn{background:none;border:none;color:#5a6478;font-size:11px;cursor:pointer;padding:4px 0;text-decoration:underline;transition:color .2s;}.vc-expand-btn:hover{color:#00e5a0;}.vc-item-details{margin-top:10px;padding-top:10px;border-top:1px solid #1e2530;}.vc-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}.vc-detail-row{display:flex;align-items:center;justify-content:space-between;background:#111418;border-radius:6px;padding:5px 8px;}.vc-detail-lbl{font-size:10px;color:#5a6478;}.vc-detail-val{font-size:12px;font-weight:600;color:#e8edf2;cursor:pointer;border-bottom:1px dashed #3a4456;min-width:40px;text-align:right;}.vc-detail-val:hover{color:#00e5a0;border-color:#00e5a0;}.vc-detail-edit{display:flex;align-items:center;gap:4px;}.vc-detail-input{background:#0a0c0f;border:1px solid #00e5a0;border-radius:4px;color:#e8edf2;font-size:12px;font-weight:600;width:60px;padding:2px 6px;text-align:right;outline:none;}.vc-detail-save{background:#00e5a0;color:#000;border:none;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;}.vc-recipe{padding:0 20px 100px;}.vc-recipe-btn{width:100%;background:#00e5a0;color:#000;border:none;border-radius:12px;padding:14px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-bottom:14px;transition:background .2s;}.vc-recipe-btn:hover{background:#00ffb3;}.vc-recipe-btn.secondary{background:none;border:1px solid #1e2530;color:#5a6478;margin-bottom:0;}.vc-recipe-btn.secondary:hover{border-color:#00e5a0;color:#00e5a0;}.vc-recipe-btn:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}.vc-recipe-card{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;}.vc-recipe-icon{font-size:28px;width:50px;height:50px;background:#111418;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid #1e2530;}.vc-recipe-det{flex:1;min-width:0;}.vc-recipe-name{font-weight:600;font-size:15px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.vc-recipe-meta{font-size:11px;color:#5a6478;}.vc-recipe-actions{display:flex;gap:6px;flex-shrink:0;}.vc-recipe-log{background:#00e5a0;color:#000;border:none;border-radius:8px;padding:7px 12px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:background .2s;white-space:nowrap;}.vc-recipe-log:hover{background:#00ffb3;}.vc-recipe-edit{background:none;border:1px solid #1e2530;color:#5a6478;border-radius:8px;padding:7px 10px;font-size:13px;cursor:pointer;transition:all .2s;}.vc-recipe-edit:hover{border-color:#4fc3f7;color:#4fc3f7;}.vc-recipe-del{background:none;border:none;color:#5a6478;cursor:pointer;font-size:15px;padding:4px;transition:color .2s;}.vc-recipe-del:hover{color:#ef4444;}.vc-recipe-form{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:14px;}.vc-recipe-form-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px;}.vc-recipe-input{width:100%;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:10px;transition:border-color .2s;}.vc-recipe-input::placeholder{color:#3a4456;}.vc-recipe-input:focus{border-color:#00e5a0;}.vc-recipe-textarea{width:100%;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;min-height:120px;outline:none;margin-bottom:10px;line-height:1.5;transition:border-color .2s;}.vc-recipe-textarea::placeholder{color:#3a4456;}.vc-recipe-textarea:focus{border-color:#00e5a0;}.vc-recipe-img-btn{width:100%;background:#111418;border:2px dashed #1e2530;border-radius:10px;padding:14px;color:#5a6478;font-size:13px;cursor:pointer;margin-bottom:10px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;}.vc-recipe-img-btn:hover{border-color:#00e5a0;color:#00e5a0;}.vc-recipe-img-preview{width:100%;border-radius:10px;margin-bottom:10px;display:block;max-height:180px;object-fit:cover;}.vc-recipe-nutr{background:#111418;border-radius:10px;padding:12px;margin-bottom:10px;}.vc-recipe-nutr-title{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:8px;}.vc-recipe-nutr-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}.vc-recipe-nutr-item{font-size:11px;color:#8a9ab0;padding:3px 0;}.vc-recipe-nutr-item strong{color:#e8edf2;}.vc-recipe-empty{text-align:center;padding:40px 20px;color:#5a6478;}.vc-recipe-hint{font-size:11px;color:#3a4456;line-height:1.6;margin-bottom:10px;padding:10px 12px;background:#111418;border-radius:8px;}.vc-photo-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}.vc-photo-slot{border:2px dashed #1e2530;border-radius:12px;overflow:hidden;position:relative;cursor:pointer;transition:border-color .2s;aspect-ratio:1;}.vc-photo-slot:hover{border-color:#00e5a0;}.vc-photo-slot.filled{border-style:solid;border-color:#00e5a0;}.vc-photo-slot img{width:100%;height:100%;object-fit:cover;display:block;}.vc-photo-slot-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px;}.vc-photo-slot-icon{font-size:24px;}.vc-photo-slot-lbl{font-size:11px;color:#5a6478;text-align:center;line-height:1.4;}.vc-photo-slot-badge{position:absolute;top:6px;right:6px;background:#00e5a0;color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;}.vc-photo-slot-remove{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.7);color:#e8edf2;border:none;border-radius:4px;font-size:12px;padding:2px 6px;cursor:pointer;}`;
+const AVATAR_COLORS = ["#00e5a0","#4fc3f7","#ff6b35","#f59e0b","#a78bfa","#f472b6","#34d399"];
 
+function getColor(idx){ return AVATAR_COLORS[idx % AVATAR_COLORS.length]; }
+
+// ── STORAGE HELPERS (user-scoped) ──────────────────────────────
+function uKey(uid, key){ return "vc_"+key+"_"+uid; }
+function uGet(uid, key, fallback){ try{const v=localStorage.getItem(uKey(uid,key));return v?JSON.parse(v):fallback;}catch(e){return fallback;} }
+function uSet(uid, key, val){ try{localStorage.setItem(uKey(uid,key),JSON.stringify(val));}catch(e){} }
+
+// Global profiles list (not user-scoped)
+function getProfiles(){ try{return JSON.parse(localStorage.getItem("vc_profiles")||"[]");}catch(e){return [];} }
+function saveProfiles(p){ try{localStorage.setItem("vc_profiles",JSON.stringify(p));}catch(e){} }
+function getActiveId(){ return localStorage.getItem("vc_active_profile")||null; }
+function setActiveId(id){ localStorage.setItem("vc_active_profile",id); }
+
+// ── EXAMPLES ──────────────────────────────────────────────────
+const EXAMPLES = [
+  "Premier Protein chocolate shake","2 scrambled eggs + toast",
+  "6oz grilled chicken breast","Magnesium glycinate 2 caps",
+  "Quarter-pound burger","Greek yogurt with berries",
+];
+
+// ── PROFILE SCREEN ─────────────────────────────────────────────
+function ProfileScreen({ onSelect }) {
+  const [profiles, setProfiles] = useState(getProfiles);
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState("adult_male");
+
+  function createProfile() {
+    if(!newName.trim()) return;
+    const p = { id: Date.now().toString(), name: newName.trim(), type: newType, createdAt: Date.now() };
+    const next = [...profiles, p];
+    saveProfiles(next);
+    setProfiles(next);
+    setNewName(""); setShowNew(false);
+    onSelect(p);
+  }
+
+  function deleteProfile(id) {
+    if(!window.confirm("Delete this profile and all its data?")) return;
+    const next = profiles.filter(p=>p.id!==id);
+    saveProfiles(next);
+    setProfiles(next);
+    // Clean up their data
+    ["log","history","library","recipes"].forEach(k=>localStorage.removeItem(uKey(id,k)));
+  }
+
+  return (
+    <div style={{background:"#0a0c0f",minHeight:"100vh",maxWidth:480,margin:"0 auto",padding:20,fontFamily:"'DM Sans',sans-serif",color:"#e8edf2"}}>
+      <div style={{paddingTop:40,paddingBottom:30,textAlign:"center"}}>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:900,fontSize:32,letterSpacing:3,textTransform:"uppercase",color:"#00e5a0",marginBottom:6}}>
+          Vital<span style={{color:"#e8edf2"}}>Core</span>
+        </div>
+        <div style={{fontSize:13,color:"#5a6478"}}>Who's tracking today?</div>
+      </div>
+
+      {profiles.length===0 && !showNew && (
+        <div style={{textAlign:"center",padding:"30px 0",color:"#5a6478",fontSize:14,lineHeight:1.7}}>
+          No profiles yet.<br/>Create one to get started.
+        </div>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+        {profiles.map((p,i)=>(
+          <div key={p.id} style={{background:"#161b22",border:"1px solid #1e2530",borderRadius:16,padding:"16px 16px",display:"flex",alignItems:"center",gap:14}}>
+            <div style={{width:48,height:48,borderRadius:"50%",background:getColor(i),display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:900,fontSize:20,color:"#000",flexShrink:0}}>
+              {p.name[0].toUpperCase()}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:16,marginBottom:2}}>{p.name}</div>
+              <div style={{fontSize:11,color:"#5a6478"}}>{PROFILE_TYPE_LABELS[p.type]||p.type}</div>
+            </div>
+            <button onClick={()=>deleteProfile(p.id)} style={{background:"none",border:"none",color:"#3a4456",cursor:"pointer",fontSize:16,padding:4,transition:"color .2s"}}
+              onMouseOver={e=>e.target.style.color="#ef4444"} onMouseOut={e=>e.target.style.color="#3a4456"}>✕</button>
+            <button onClick={()=>{setActiveId(p.id);onSelect(p);}}
+              style={{background:"#00e5a0",color:"#000",border:"none",borderRadius:10,padding:"10px 18px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,letterSpacing:1,cursor:"pointer",flexShrink:0}}>
+              Go →
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {!showNew ? (
+        <button onClick={()=>setShowNew(true)}
+          style={{width:"100%",background:"none",border:"2px dashed #1e2530",color:"#5a6478",borderRadius:14,padding:16,fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,letterSpacing:1,textTransform:"uppercase",cursor:"pointer",transition:"all .2s"}}
+          onMouseOver={e=>{e.target.style.borderColor="#00e5a0";e.target.style.color="#00e5a0";}}
+          onMouseOut={e=>{e.target.style.borderColor="#1e2530";e.target.style.color="#5a6478";}}>
+          + Add Profile
+        </button>
+      ):(
+        <div style={{background:"#161b22",border:"1px solid #1e2530",borderRadius:16,padding:16}}>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:13,fontWeight:600,letterSpacing:2,textTransform:"uppercase",color:"#5a6478",marginBottom:12}}>New Profile</div>
+          <input value={newName} onChange={e=>setNewName(e.target.value)}
+            placeholder="Name (e.g. Jason, Kai)"
+            onKeyDown={e=>e.key==="Enter"&&createProfile()}
+            style={{width:"100%",background:"#111418",border:"1px solid #1e2530",borderRadius:10,padding:"11px 14px",color:"#e8edf2",fontFamily:"'DM Sans',sans-serif",fontSize:14,outline:"none",marginBottom:10}}
+            autoFocus/>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,color:"#5a6478",marginBottom:8,textTransform:"uppercase",letterSpacing:1,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600}}>Profile Type</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {Object.entries(PROFILE_TYPE_LABELS).map(([val,lbl])=>(
+                <button key={val} onClick={()=>setNewType(val)}
+                  style={{background:newType===val?"#00e5a0":"#111418",color:newType===val?"#000":"#5a6478",border:"1px solid "+(newType===val?"#00e5a0":"#1e2530"),borderRadius:8,padding:"9px 10px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer",transition:"all .18s"}}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={createProfile} disabled={!newName.trim()}
+              style={{flex:1,background:"#00e5a0",color:"#000",border:"none",borderRadius:10,padding:14,fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:700,letterSpacing:1,cursor:"pointer"}}>
+              Create
+            </button>
+            <button onClick={()=>{setShowNew(false);setNewName("");}}
+              style={{background:"none",border:"1px solid #1e2530",color:"#5a6478",borderRadius:10,padding:"14px 18px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,cursor:"pointer"}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MAIN APP ───────────────────────────────────────────────────
 function VitalCore() {
   const today = new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
 
-  const [logItems, setLogItems] = useState(() => {
-    try { const s=JSON.parse(localStorage.getItem("vc_log")||"{}"); if(s.date===today) return s.items||[]; } catch(e){}
-    return [];
-  });
-  const [totals, setTotals] = useState(() => {
-    try { const s=JSON.parse(localStorage.getItem("vc_log")||"{}"); if(s.date===today&&s.totals) return s.totals; } catch(e){}
-    return EMPTY();
-  });
-  const [history, setHistory] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("vc_history")||"[]"); } catch(e){ return []; }
-  });
-  const [library, setLibrary] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("vc_library")||"[]"); } catch(e){ return []; }
+  // Profile state
+  const [profile, setProfile] = useState(()=>{
+    const id = getActiveId();
+    if(!id) return null;
+    const profiles = getProfiles();
+    return profiles.find(p=>p.id===id)||null;
   });
 
-  const [tab, setTab]             = useState("camera");
-  const [input, setInput]         = useState("");
-  const [servings, setServings]   = useState(1);
+  const uid = profile?.id||"default";
+  const TARGETS = PROFILE_TARGETS[profile?.type||"adult_male"];
+
+  // All data keyed to current user
+  const [logItems, setLogItems] = useState(()=>{ const s=uGet(uid,"log",{}); return s.date===today?(s.items||[]):[]});
+  const [totals,   setTotals]   = useState(()=>{ const s=uGet(uid,"log",{}); return s.date===today&&s.totals?s.totals:EMPTY()});
+  const [history,  setHistory]  = useState(()=> uGet(uid,"history",[]));
+  const [library,  setLibrary]  = useState(()=> uGet(uid,"library",[]));
+  const [recipes,  setRecipes]  = useState(()=> uGet(uid,"recipes",[]));
+
+  // Reload data when profile switches
+  useEffect(()=>{
+    if(!profile) return;
+    const s = uGet(uid,"log",{});
+    setLogItems(s.date===today?(s.items||[]):[]);
+    setTotals(s.date===today&&s.totals?s.totals:EMPTY());
+    setHistory(uGet(uid,"history",[]));
+    setLibrary(uGet(uid,"library",[]));
+    setRecipes(uGet(uid,"recipes",[]));
+    setCoachTips(null);
+    setTab("camera");
+  },[uid]);
+
+  const [tab,       setTab]       = useState("camera");
+  const [input,     setInput]     = useState("");
+  const [servings,  setServings]  = useState(1);
   const [analyzing, setAnalyzing] = useState(false);
-  const [preview, setPreview]           = useState(null);
-  const [labelPreviews, setLabelPreviews] = useState([]); // up to 4 label photos
-  const [needsLabel, setNeedsLabel]     = useState(false);
+  const [preview,   setPreview]   = useState(null);
+  const [labelPreviews, setLabelPreviews] = useState([]);
+  const [needsLabel,setNeedsLabel]= useState(false);
   const [libSearch, setLibSearch] = useState("");
-  const [histDetail, setHistDetail] = useState(null);
-  const [toast, setToast]         = useState({msg:"",show:false});
+  const [histDetail,setHistDetail]= useState(null);
+  const [toast,     setToast]     = useState({msg:"",show:false});
   const [coachTips, setCoachTips] = useState(null);
-  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachLoading,setCoachLoading]=useState(false);
+  const [expandedItem,setExpandedItem]=useState(null);
+  const [editingItem, setEditingItem] =useState(null);
+  const [recipeView,  setRecipeView]  =useState("list");
+  const [activeRecipe,setActiveRecipe]=useState(null);
+  const [recipeName,  setRecipeName]  =useState("");
+  const [recipeIngredients,setRecipeIngredients]=useState("");
+  const [recipeAnalyzing,setRecipeAnalyzing]=useState(false);
+  const [recipeImgData,setRecipeImgData]=useState(null);
+  const [recipePendingNutr,setRecipePendingNutr]=useState(null);
+  const [showProfileSwitch,setShowProfileSwitch]=useState(false);
 
-  const [recipes, setRecipes] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("vc_recipes")||"[]"); } catch(e){ return []; }
-  });
-  const [recipeView, setRecipeView] = useState("list"); // "list" | "new" | "view"
-  const [activeRecipe, setActiveRecipe] = useState(null);
-  const [recipeName, setRecipeName] = useState("");
-  const [recipeIngredients, setRecipeIngredients] = useState("");
-  const [recipeServings, setRecipeServings] = useState(1);
-  const [recipeAnalyzing, setRecipeAnalyzing] = useState(false);
-  const [recipeImgData, setRecipeImgData] = useState(null);
-  const [recipePendingNutr, setRecipePendingNutr] = useState(null);
+  const toastTimer=useRef(null); const textareaRef=useRef(null);
+  const cameraRef=useRef(null);  const galleryRef=useRef(null);
+  const labelRef=useRef(null);   const labelGalleryRef=useRef(null);
+  const recipeImgRef=useRef(null);
 
-  const recipeImgRef = useRef(null);
-  const [editingItem, setEditingItem]   = useState(null); // {id, field, value}
+  const calPct=Math.min(Math.round(((totals.calories||0)/TARGETS.calories)*100),999);
+  const offset=289-(289*Math.min(calPct,100)/100);
 
-  function startEdit(itemId, field, currentVal) {
-    setEditingItem({id:itemId, field, value:String(currentVal)});
-  }
-
-  function commitEdit() {
-    if(!editingItem) return;
-    const {id, field, value} = editingItem;
-    const num = parseFloat(value);
-    if(isNaN(num) || num < 0) { setEditingItem(null); return; }
-    setLogItems(prev=>{
-      const next=prev.map(i=>{
-        if(i.id!==id) return i;
-        const newNutr={...i.baseNutr,[field]:num};
-        return {...i,baseNutr:newNutr};
-      });
-      const t=recompute(next);setTotals(t);persist(next,t);return next;
-    });
-    setEditingItem(null);
-    showToast("✓ Updated");
-  }
-  const textareaRef    = useRef(null);
-  const cameraRef      = useRef(null);
-  const galleryRef     = useRef(null);
-  const labelRef       = useRef(null);
-  const labelGalleryRef = useRef(null);
-
-  const calPct = Math.min(Math.round(((totals.calories||0)/TARGETS.calories.goal)*100),999);
-  const offset = 289-(289*Math.min(calPct,100)/100);
-
-  const showToast = useCallback((msg) => {
+  const showToast=useCallback((msg)=>{
     clearTimeout(toastTimer.current);
     setToast({msg,show:true});
-    toastTimer.current = setTimeout(()=>setToast(t=>({...t,show:false})),2800);
+    toastTimer.current=setTimeout(()=>setToast(t=>({...t,show:false})),2800);
   },[]);
 
-  function recompute(items) {
+  function recompute(items){
     const n=EMPTY();
     for(const item of items) for(const k of NUTR_KEYS) n[k]+=(item.baseNutr[k]||0)*item.servings;
     return n;
   }
 
-  function persist(items, t) {
-    try { localStorage.setItem("vc_log",JSON.stringify({date:today,items,totals:t})); } catch(e){}
-    if(items.length>0) {
+  function persist(items,t){
+    uSet(uid,"log",{date:today,items,totals:t});
+    if(items.length>0){
       const snap={date:today,totals:{...t},itemCount:items.length};
       setHistory(prev=>{
         const next=[snap,...prev.filter(d=>d.date!==today)].slice(0,90);
-        try { localStorage.setItem("vc_history",JSON.stringify(next)); } catch(e){}
+        uSet(uid,"history",next);
         return next;
       });
     }
   }
 
-  function handleFileSelect(e) {
-    const file=e.target.files[0]; if(!file) return; e.target.value="";
-    compressImage(file, p => setPreview(p));
-  }
-
-  function handleLabelSelect(e) {
-    const file=e.target.files[0]; if(!file) return; e.target.value="";
-    compressImage(file, p => setLabelPreviews(prev => prev.length < 4 ? [...prev, p] : prev));
-  }
-
-  function compressImage(file, callback) {
-    const img=new Image(), url=URL.createObjectURL(file);
+  function compressImage(file,callback){
+    const img=new Image(),url=URL.createObjectURL(file);
     img.onload=()=>{
       URL.revokeObjectURL(url);
       const canvas=document.createElement("canvas");
-      const MAX=1200; let w=img.width,h=img.height;
+      const MAX=1200;let w=img.width,h=img.height;
       if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;}}
       canvas.width=w;canvas.height=h;
       canvas.getContext("2d").drawImage(img,0,0,w,h);
@@ -196,84 +282,43 @@ function VitalCore() {
     img.src=url;
   }
 
-  async function analyzeImage() {
-    if(!preview) return;
+  function handleFileSelect(e){const file=e.target.files[0];if(!file)return;e.target.value="";compressImage(file,p=>setPreview(p));}
+  function handleLabelSelect(e){const file=e.target.files[0];if(!file)return;e.target.value="";compressImage(file,p=>setLabelPreviews(prev=>prev.length<4?[...prev,p]:prev));}
+
+  async function analyzeImage(){
+    if(!preview)return;
     setAnalyzing(true);
-
-    const hasLabels = labelPreviews.length > 0;
-    const labelCount = labelPreviews.length;
-
-    // Fix: capture data then clear photos immediately so UI resets right away
-    const frontData = {...preview};
-    const labelData = [...labelPreviews];
-    setPreview(null);
-    setLabelPreviews([]);
-    setNeedsLabel(false);
-    setServings(1);
-
-    // Fix 2: If only front photo (no label), check library first before calling API
-    if(!hasLabels) {
-      // Try to match against library by sending just the name identification
-      const libMatchPrompt = `Look at this product image and identify the exact brand and product name. Return ONLY a JSON object: {"name":"exact brand and product name"} Nothing else.`;
-      try {
-        const idRes = await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+    const frontData={...preview};const labelData=[...labelPreviews];
+    setPreview(null);setLabelPreviews([]);setNeedsLabel(false);setServings(1);
+    const hasLabels=labelData.length>0;
+    if(!hasLabels){
+      try{
+        const idRes=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:100,messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:frontData.mime,data:frontData.base64}},
-            {type:"text",text:libMatchPrompt}
+            {type:"text",text:'Identify this product. Return ONLY JSON: {"name":"exact brand and product name"}'}
           ]}]})});
-        const idData = await idRes.json();
-        const idRaw = (idData.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-        const identified = JSON.parse(idRaw);
-        const identifiedName = (identified.name||"").toLowerCase();
-        // Check library for a match
-        const libMatch = library.find(l => {
-          const libName = l.name.toLowerCase();
-          return identifiedName.includes(libName.split(" ")[0]) || libName.includes(identifiedName.split(" ")[0]);
+        const idData=await idRes.json();
+        const idRaw=(idData.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+        const identified=JSON.parse(idRaw);
+        const identifiedName=(identified.name||"").toLowerCase();
+        const libMatch=library.find(l=>{
+          const ln=l.name.toLowerCase();
+          return identifiedName.includes(ln.split(" ")[0])||ln.includes(identifiedName.split(" ")[0]);
         });
-        if(libMatch) {
-          addItem({...libMatch.baseNutr, name:libMatch.name, emoji:libMatch.emoji}, null, servings);
-          showToast("✓ "+libMatch.name+" matched from library!");
-          setAnalyzing(false);
-          return;
-        }
-      } catch(e){ /* fall through to normal analysis */ }
+        if(libMatch){addItem({...libMatch.baseNutr,name:libMatch.name,emoji:libMatch.emoji},null,servings);setAnalyzing(false);showToast("✓ "+libMatch.name+" from library!");return;}
+      }catch(e){}
     }
-
-    const prompt = hasLabels
-      ? `You are a precision nutrition label reader. You have been given ${1+labelCount} images:
-Image 1: The FRONT of the product — use this to identify the exact brand and product name.
-${labelData.map((_,i)=>`Image ${i+2}: Nutrition/Supplement Facts label panel ${i+1} — extract exact nutrient values from this.`).join('\n')}
-
-CRITICAL RULES:
-1. Use Image 1 for the product name only — use the full brand + product name exactly as shown.
-2. Use ALL label images for nutrient values — each image may show different nutrients since the label wraps around the container. Combine values from all label images.
-3. For Vitamin D: convert mcg to IU (1 mcg = 40 IU). E.g. 125 mcg = 5000 IU.
-4. Do NOT estimate — every value must come directly from the label images.
-5. If a nutrient appears in multiple label images, use the value from the clearest reading.
-
-Return ONLY valid JSON no markdown no backticks:
-{"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
-Values per 1 serving as on the label. vitD in IU. Return 0 only if confirmed not present.`
-      : `You are a precision nutrition label reader. Analyze this food/drink/supplement image.
-CRITICAL RULES:
-1. If a nutrition label is visible, read EVERY value EXACTLY as printed. Do not estimate.
-2. Read exact mg/mcg/IU amounts, NOT the %DV.
-3. For Vitamin D: convert mcg to IU (1 mcg = 40 IU). E.g. 125 mcg = 5000 IU.
-4. Use the exact brand and product name if visible.
-5. Only estimate if absolutely no label is visible.
-Return ONLY valid JSON no markdown no backticks:
-{"name":"exact brand + product name","emoji":"single emoji","needs_label":false,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
-Values per 1 serving. vitD in IU. Return 0 if not listed.`;
-
-    const content = [
+    const prompt=hasLabels
+      ?`You are a precision nutrition label reader. Image 1 is the product front (use for name). Images 2+ are label panels (read ALL for exact values). Combine nutrients from all label images. For Vitamin D convert mcg to IU (1mcg=40IU). Return ONLY JSON no markdown: {"name":"exact brand+product","emoji":"emoji","needs_label":false,"calories":n,"protein":n,"carbs":n,"fat":n,"fiber":n,"sodium":n,"calcium":n,"magnesium":n,"vitD":n,"vitC":n,"potassium":n,"zinc":n,"sugar":n} Per 1 serving. vitD in IU.`
+      :`You are a precision nutrition label reader. Read exact values from any visible label. For Vitamin D convert mcg to IU (1mcg=40IU). Use exact brand+product name. Return ONLY JSON no markdown: {"name":"exact brand+product","emoji":"emoji","needs_label":false,"calories":n,"protein":n,"carbs":n,"fat":n,"fiber":n,"sodium":n,"calcium":n,"magnesium":n,"vitD":n,"vitC":n,"potassium":n,"zinc":n,"sugar":n} Per 1 serving. vitD in IU.`;
+    const content=[
       {type:"image",source:{type:"base64",media_type:frontData.mime,data:frontData.base64}},
       ...labelData.map(lp=>({type:"image",source:{type:"base64",media_type:lp.mime,data:lp.base64}})),
       {type:"text",text:prompt}
     ];
-
-    try {
-      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content}]})});
+    try{
+      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content}]})});
       const data=await res.json();
       if(data.error){showToast("Error: "+String(data.error).slice(0,60));return;}
       const raw=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
@@ -281,561 +326,233 @@ Values per 1 serving. vitD in IU. Return 0 if not listed.`;
       const n=JSON.parse(raw);
       if(n.needs_label){setNeedsLabel(true);return;}
       addItem(n,null,servings);
-    } catch(e){showToast("Error: "+String(e.message||e).slice(0,60));}
+    }catch(e){showToast("Error: "+String(e.message||e).slice(0,60));}
     finally{setAnalyzing(false);}
   }
 
-  async function handleLog() {
-    const text=input.trim(); if(!text||analyzing) return;
+  async function handleLog(){
+    const text=input.trim();if(!text||analyzing)return;
     setAnalyzing(true);setInput("");const srv=servings;setServings(1);
-    const prompt=`You are a nutrition analysis AI. The user consumed: "${text}" Return ONLY valid JSON no markdown no backticks: {"name":"clean short name","emoji":"single emoji","calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number} Values per 1 serving. Return 0 for negligible never null.`;
-    try {
-      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:500,messages:[{role:"user",content:prompt}]})});
+    const prompt=`Nutrition AI. User consumed: "${text}" Return ONLY JSON no markdown: {"name":"clean name","emoji":"emoji","calories":n,"protein":n,"carbs":n,"fat":n,"fiber":n,"sodium":n,"calcium":n,"magnesium":n,"vitD":n,"vitC":n,"potassium":n,"zinc":n,"sugar":n} Per 1 serving. 0 for negligible.`;
+    try{
+      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:500,messages:[{role:"user",content:prompt}]})});
       const data=await res.json();
       if(data.error){showToast("Error: "+String(data.error).slice(0,60));return;}
       const raw=(data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-      const n=JSON.parse(raw);
-      addItem(n,text,srv);
-    } catch(e){showToast("Error: "+String(e.message||e).slice(0,60));}
+      const n=JSON.parse(raw);addItem(n,text,srv);
+    }catch(e){showToast("Error: "+String(e.message||e).slice(0,60));}
     finally{setAnalyzing(false);}
   }
 
-  function addItem(n, originalText, srv) {
+  function addItem(n,originalText,srv){
     const time=new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});
-    const baseNutr={
-      calories:+n.calories||0,protein:+n.protein||0,carbs:+n.carbs||0,fat:+n.fat||0,
-      fiber:+n.fiber||0,sodium:+n.sodium||0,calcium:+n.calcium||0,magnesium:+n.magnesium||0,
-      vitD:+n.vitD||0,vitC:+n.vitC||0,potassium:+n.potassium||0,zinc:+n.zinc||0,sugar:+n.sugar||0,
-    };
+    const baseNutr={calories:+n.calories||0,protein:+n.protein||0,carbs:+n.carbs||0,fat:+n.fat||0,fiber:+n.fiber||0,sodium:+n.sodium||0,calcium:+n.calcium||0,magnesium:+n.magnesium||0,vitD:+n.vitD||0,vitC:+n.vitC||0,potassium:+n.potassium||0,zinc:+n.zinc||0,sugar:+n.sugar||0};
     const item={id:Date.now(),time,name:n.name||(originalText||"Item"),emoji:n.emoji||"🍽️",servings:srv,baseNutr};
     setLogItems(prev=>{const next=[item,...prev];const t=recompute(next);setTotals(t);persist(next,t);return next;});
     setLibrary(prev=>{
-      if(prev.find(l=>l.name.toLowerCase()===item.name.toLowerCase())) return prev;
+      if(prev.find(l=>l.name.toLowerCase()===item.name.toLowerCase()))return prev;
       const next=[{id:item.id,name:item.name,emoji:item.emoji,baseNutr},...prev].slice(0,100);
-      try{localStorage.setItem("vc_library",JSON.stringify(next));}catch(e){}
-      return next;
+      uSet(uid,"library",next);return next;
     });
     showToast("✓ "+item.name+" × "+srv+" logged");
   }
 
-  function logFromLib(libItem) {
+  function logFromLib(libItem){
     const time=new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true});
     const item={id:Date.now(),time,name:libItem.name,emoji:libItem.emoji,servings:1,baseNutr:libItem.baseNutr};
     setLogItems(prev=>{const next=[item,...prev];const t=recompute(next);setTotals(t);persist(next,t);return next;});
     showToast("✓ "+item.name+" logged");
   }
 
-  function changeServings(id,delta) {
-    setLogItems(prev=>{
-      const next=prev.map(i=>i.id!==id?i:{...i,servings:Math.max(0.5,Math.min(10,+(i.servings+delta).toFixed(1)))});
-      const t=recompute(next);setTotals(t);persist(next,t);return next;
-    });
+  function changeServings(id,delta){
+    setLogItems(prev=>{const next=prev.map(i=>i.id!==id?i:{...i,servings:Math.max(0.5,Math.min(10,+(i.servings+delta).toFixed(1)))});const t=recompute(next);setTotals(t);persist(next,t);return next;});
+  }
+  function deleteItem(id){setLogItems(prev=>{const next=prev.filter(i=>i.id!==id);const t=recompute(next);setTotals(t);persist(next,t);return next;});showToast("Item removed");}
+  function resetDay(){if(!window.confirm("Reset today's log?"))return;setLogItems([]);setTotals(EMPTY());uSet(uid,"log",{date:today,items:[],totals:EMPTY()});showToast("Day reset");}
+  function delFromLib(id){setLibrary(prev=>{const next=prev.filter(i=>i.id!==id);uSet(uid,"library",next);return next;});}
+
+  function startEdit(itemId,field,currentVal){setEditingItem({id:itemId,field,value:String(currentVal)});}
+  function commitEdit(){
+    if(!editingItem)return;
+    const{id,field,value}=editingItem;const num=parseFloat(value);
+    if(isNaN(num)||num<0){setEditingItem(null);return;}
+    setLogItems(prev=>{const next=prev.map(i=>{if(i.id!==id)return i;return{...i,baseNutr:{...i.baseNutr,[field]:num}};});const t=recompute(next);setTotals(t);persist(next,t);return next;});
+    setEditingItem(null);showToast("✓ Updated");
   }
 
-  function deleteItem(id) {
-    setLogItems(prev=>{const next=prev.filter(i=>i.id!==id);const t=recompute(next);setTotals(t);persist(next,t);return next;});
-    showToast("Item removed");
-  }
+  function saveRecipe(recipe){setRecipes(prev=>{const existing=prev.find(r=>r.id===recipe.id);const next=existing?prev.map(r=>r.id===recipe.id?recipe:r):[recipe,...prev];uSet(uid,"recipes",next);return next;});}
+  function deleteRecipe(id){setRecipes(prev=>{const next=prev.filter(r=>r.id!==id);uSet(uid,"recipes",next);return next;});}
+  function logRecipe(recipe,srv){addItem({name:recipe.name,emoji:recipe.emoji||"🍽️",...recipe.nutr},null,srv||1);}
 
-  function resetDay() {
-    if(!window.confirm("Reset today's log?")) return;
-    setLogItems([]);setTotals(EMPTY());setCoachTips(null);
-    try{localStorage.setItem("vc_log",JSON.stringify({date:today,items:[],totals:EMPTY()}));}catch(e){}
-    showToast("Day reset");
-  }
-
-  function delFromLib(id) {
-    setLibrary(prev=>{const next=prev.filter(i=>i.id!==id);try{localStorage.setItem("vc_library",JSON.stringify(next));}catch(e){}return next;});
-  }
-
-  function saveRecipe(recipe) {
-    setRecipes(prev=>{
-      const existing = prev.find(r=>r.id===recipe.id);
-      const next = existing ? prev.map(r=>r.id===recipe.id?recipe:r) : [recipe,...prev];
-      try{localStorage.setItem("vc_recipes",JSON.stringify(next));}catch(e){}
-      return next;
-    });
-  }
-
-  function deleteRecipe(id) {
-    setRecipes(prev=>{const next=prev.filter(r=>r.id!==id);try{localStorage.setItem("vc_recipes",JSON.stringify(next));}catch(e){}return next;});
-  }
-
-  function logRecipe(recipe, srv) {
-    addItem({
-      name: recipe.name,
-      emoji: recipe.emoji||"🍽️",
-      ...recipe.nutr
-    }, null, srv||1);
-    showToast("✓ "+recipe.name+" logged");
-  }
-
-  async function analyzeRecipe(name, ingredients, imageData) {
+  async function analyzeRecipe(name,ingredients,imageData){
     setRecipeAnalyzing(true);
-
-    const hasImage = !!imageData;
-    const prompt = `You are a nutrition analysis AI specializing in homemade recipes.
-${hasImage ? "You have been given a photo of a recipe or its ingredients. " : ""}
-${ingredients ? "Ingredients/recipe: "+ingredients : ""}
-Recipe name: "${name}"
-
-Analyze the complete recipe and return nutrition facts per 1 serving.
-Estimate based on standard ingredient amounts if quantities are approximate.
-
-Return ONLY valid JSON no markdown no backticks:
-{"emoji":"single relevant emoji","servingsInRecipe":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"calcium":number,"magnesium":number,"vitD":number,"vitC":number,"potassium":number,"zinc":number,"sugar":number}
-
-servingsInRecipe = estimated number of servings the full recipe makes.
-All nutrient values are PER SERVING. Return 0 for negligible.`;
-
-    const content = [];
-    if(hasImage) content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:imageData}});
+    const hasImage=!!imageData;
+    const prompt=`Nutrition AI for homemade recipes. ${hasImage?"You have a recipe/ingredient photo. ":""}${ingredients?"Ingredients: "+ingredients:""} Recipe: "${name}" Return nutrition per 1 serving. ONLY JSON no markdown: {"emoji":"emoji","servingsInRecipe":n,"calories":n,"protein":n,"carbs":n,"fat":n,"fiber":n,"sodium":n,"calcium":n,"magnesium":n,"vitD":n,"vitC":n,"potassium":n,"zinc":n,"sugar":n}`;
+    const content=[];
+    if(hasImage)content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:imageData}});
     content.push({type:"text",text:prompt});
-
-    try {
-      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content}]})});
+    try{
+      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:600,messages:[{role:"user",content}]})});
       const data=await res.json();
-      if(data.error){showToast("Recipe error: "+String(data.error).slice(0,50));return null;}
+      if(data.error){showToast("Recipe error");return null;}
       const raw=(data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
       return JSON.parse(raw);
-    } catch(e){showToast("Recipe error — try again");return null;}
+    }catch(e){showToast("Recipe error — try again");return null;}
     finally{setRecipeAnalyzing(false);}
   }
 
-  function RecipeTab() {
-    const [logSrvCount, setLogSrvCount] = useState(1);
-    const imgData = recipeImgData;
-    const setImgData = setRecipeImgData;
-    const pendingNutr = recipePendingNutr;
-    const setPendingNutr = setRecipePendingNutr;
-
-    function handleRecipeImg(e) {
-      const file=e.target.files[0]; if(!file) return; e.target.value="";
-      compressImage(file, p=>setRecipeImgData(p.base64));
+  async function getCoachAdvice(){
+    if(logItems.length===0){showToast("Log some food first!");return;}
+    setCoachLoading(true);setCoachTips(null);
+    const hour=new Date().getHours();
+    const timeOfDay=hour<12?"morning":hour<17?"afternoon":"evening";
+    const foodList=logItems.map(i=>i.name+" x"+i.servings).join(", ");
+    const todaySummary=Object.entries(NUTR_META).map(([key,cfg])=>{
+      const val=totals[key]||0,goal=TARGETS[key],pct=Math.round((val/goal)*100);
+      return key+": "+Math.round(val)+cfg.unit+" ("+pct+"% of "+goal+cfg.unit+") canExceed:"+cfg.canExceed;
+    }).join("\n");
+    const last7=history.filter(d=>d.date!==today).slice(0,7);
+    let histCtx="";
+    if(last7.length>0){
+      const avgSummary=Object.entries(NUTR_META).map(([key,cfg])=>{
+        const vals=last7.map(d=>d.totals[key]||0);
+        const avg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+        const pct=Math.round((avg/TARGETS[key])*100);
+        const daysUnder=vals.filter(v=>(v/TARGETS[key])<0.7).length;
+        const daysOver=vals.filter(v=>(v/TARGETS[key])>1.1).length;
+        const pattern=daysUnder>=5?"consistently low ("+daysUnder+"/"+vals.length+" days)":daysOver>=4?"consistently over ("+daysOver+"/"+vals.length+" days)":daysUnder>=3?"frequently low":"on track";
+        return cfg.label+": avg "+avg+cfg.unit+" ("+pct+"%) — "+pattern;
+      }).join("\n");
+      histCtx="\nLAST "+last7.length+" DAYS:\n"+last7.map(d=>d.date.split(",")[1]?.trim()+": "+Math.round(d.totals.calories||0)+"kcal, "+Math.round(d.totals.protein||0)+"g protein").join("\n")+"\n7-day averages:\n"+avgSummary;
     }
-
-    async function handleAnalyze() {
-      if(!recipeName.trim()&&!recipeIngredients.trim()&&!imgData){showToast("Add a name, ingredients, or photo");return;}
-      const nutr = await analyzeRecipe(recipeName||"Custom Recipe", recipeIngredients, imgData);
-      if(nutr) setPendingNutr(nutr);
-    }
-
-    function handleSave() {
-      if(!pendingNutr) return;
-      const recipe = {
-        id: activeRecipe?.id || Date.now(),
-        name: recipeName||"Custom Recipe",
-        emoji: pendingNutr.emoji||"🍽️",
-        ingredients: recipeIngredients,
-        servingsInRecipe: pendingNutr.servingsInRecipe||1,
-        nutr: {
-          calories:+pendingNutr.calories||0, protein:+pendingNutr.protein||0,
-          carbs:+pendingNutr.carbs||0, fat:+pendingNutr.fat||0,
-          fiber:+pendingNutr.fiber||0, sodium:+pendingNutr.sodium||0,
-          calcium:+pendingNutr.calcium||0, magnesium:+pendingNutr.magnesium||0,
-          vitD:+pendingNutr.vitD||0, vitC:+pendingNutr.vitC||0,
-          potassium:+pendingNutr.potassium||0, zinc:+pendingNutr.zinc||0,
-          sugar:+pendingNutr.sugar||0,
-        },
-        createdAt: Date.now(),
-      };
-      saveRecipe(recipe);
-      // Reset form
-      setRecipeName("");setRecipeIngredients("");
-      setRecipeImgData(null);setRecipePendingNutr(null);
-      setActiveRecipe(null);
-      setRecipeView("list");
-      showToast("✓ "+recipe.name+" saved to recipes");
-    }
-
-    function openEdit(recipe) {
-      setActiveRecipe(recipe);
-      setRecipeName(recipe.name);
-      setRecipeIngredients(recipe.ingredients||"");
-      setRecipePendingNutr({...recipe.nutr, emoji:recipe.emoji, servingsInRecipe:recipe.servingsInRecipe});
-      setRecipeImgData(null);
-      setRecipeView("new");
-    }
-
-    function openNew() {
-      setActiveRecipe(null);
-      setRecipeName("");setRecipeIngredients("");
-      setRecipeImgData(null);setRecipePendingNutr(null);
-      setRecipeView("new");
-    }
-
-    if(recipeView==="new") return (
-      <div className="vc-recipe">
-        <div className="vc-recipe-form">
-          <div className="vc-recipe-form-title">{activeRecipe?"Edit Recipe":"New Recipe"}</div>
-
-          <input className="vc-recipe-input" placeholder="Recipe name (e.g. Homemade Breakfast Tacos)"
-            value={recipeName} onChange={e=>setRecipeName(e.target.value)}/>
-
-          <div className="vc-recipe-hint">
-            📝 List your ingredients with amounts, or just describe the dish. The more detail you give, the more accurate the estimate.
-          </div>
-
-          <textarea className="vc-recipe-textarea"
-            placeholder={"e.g.\n3 eggs\n3 strips bacon\n2 corn tortillas (fried)\n1/4 cup O'Brien potatoes\n2 tbsp shredded cheddar"}
-            value={recipeIngredients} onChange={e=>setRecipeIngredients(e.target.value)}/>
-
-          {imgData ? (
-            <div style={{position:"relative",marginBottom:10}}>
-              <img src={"data:image/jpeg;base64,"+imgData} className="vc-recipe-img-preview" alt="recipe"/>
-              <button onClick={()=>setImgData(null)}
-                style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.7)",color:"#e8edf2",border:"none",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontSize:12}}>
-                Remove
-              </button>
-            </div>
-          ):(
-            <button className="vc-recipe-img-btn" onClick={()=>recipeImgRef.current.click()}>
-              📷 Snap or upload recipe / ingredients photo (optional)
-            </button>
-          )}
-
-          {pendingNutr&&(
-            <div className="vc-recipe-nutr">
-              <div className="vc-recipe-nutr-title">Estimated per serving ({pendingNutr.servingsInRecipe||1} servings total)</div>
-              <div className="vc-recipe-nutr-grid">
-                {Object.entries(TARGETS).map(([key,cfg])=>(
-                  <div className="vc-recipe-nutr-item" key={key}>
-                    {cfg.label}: <strong>{Math.round(pendingNutr[key]||0)}{cfg.unit}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <button className="vc-recipe-btn" onClick={handleAnalyze} disabled={recipeAnalyzing}>
-            {recipeAnalyzing?"Analyzing…":"🔍 Estimate Nutrition"}
-          </button>
-
-          {pendingNutr&&(
-            <button className="vc-recipe-btn" onClick={handleSave} style={{background:"#4fc3f7",marginBottom:8}}>
-              💾 Save Recipe
-            </button>
-          )}
-
-          <button className="vc-recipe-btn secondary" onClick={()=>{setRecipeView("list");setActiveRecipe(null);}}>
-            ← Back
-          </button>
-        </div>
-        <input ref={recipeImgRef} type="file" accept="image/*" onChange={handleRecipeImg} style={{display:"none"}}/>
-      </div>
-    );
-
-    // LIST VIEW
-    return (
-      <div className="vc-recipe">
-        <button className="vc-recipe-btn" onClick={openNew}>+ New Recipe</button>
-
-        {recipes.length===0?(
-          <div className="vc-recipe-empty">
-            <div style={{fontSize:36,marginBottom:12}}>👨‍🍳</div>
-            <p style={{fontSize:14,lineHeight:1.7}}>Save your homemade recipes here.<br/>Add ingredients and the AI estimates<br/>the nutrition per serving.</p>
-          </div>
-        ):recipes.map(recipe=>(
-          <div className="vc-recipe-card" key={recipe.id}>
-            <div className="vc-recipe-icon">{recipe.emoji}</div>
-            <div className="vc-recipe-det">
-              <div className="vc-recipe-name">{recipe.name}</div>
-              <div className="vc-recipe-meta">
-                {Math.round(recipe.nutr.calories)} kcal · {Math.round(recipe.nutr.protein)}g protein · {recipe.servingsInRecipe} servings
-              </div>
-            </div>
-            <div className="vc-recipe-actions">
-              <div>
-                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:5}}>
-                  <button className="vc-isb" onClick={()=>{
-                    const curr=parseInt(recipe._logSrv||1);
-                    saveRecipe({...recipe,_logSrv:Math.max(0.5,+(curr-.5).toFixed(1))});
-                  }} style={{width:24,height:24,fontSize:14}}>−</button>
-                  <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,minWidth:20,textAlign:"center",fontSize:14}}>
-                    {recipe._logSrv||1}
-                  </span>
-                  <button className="vc-isb" onClick={()=>{
-                    const curr=parseFloat(recipe._logSrv||1);
-                    saveRecipe({...recipe,_logSrv:Math.min(10,+(curr+.5).toFixed(1))});
-                  }} style={{width:24,height:24,fontSize:14}}>+</button>
-                </div>
-                <button className="vc-recipe-log" onClick={()=>logRecipe(recipe,recipe._logSrv||1)}>Log</button>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                <button className="vc-recipe-edit" onClick={()=>openEdit(recipe)}>✏️</button>
-                <button className="vc-recipe-del" onClick={()=>{if(window.confirm("Delete "+recipe.name+"?"))deleteRecipe(recipe.id);}}>✕</button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+    const userName=profile?.name||"the user";
+    const profileType=PROFILE_TYPE_LABELS[profile?.type||"adult_male"]||"";
+    const prompt=`You are a friendly nutrition coach for VitalCore. User: ${userName} (${profileType}). It is ${timeOfDay}. Today logged: ${foodList}\n\nTODAY:\n${todaySummary}${histCtx}\n\nGive 4-6 plain-English coaching tips. Lead with most important. Reference patterns when history available. canExceed:true nutrients are fine to go over. Keep tips 2-3 sentences. No medical jargon. Use the person's name ${userName} occasionally.\n\nReturn ONLY JSON array no markdown:\n[{"type":"good|caution|warn|info","icon":"emoji","title":"short title","body":"tip"}]`;
+    try{
+      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1200,messages:[{role:"user",content:prompt}]})});
+      const data=await res.json();
+      if(data.error){showToast("Coach error");return;}
+      const raw=(data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+      setCoachTips(JSON.parse(raw));
+    }catch(e){showToast("Coach error — try again");}
+    finally{setCoachLoading(false);}
   }
 
-  function statusFor(key,val) {
-    const {goal,unit}=TARGETS[key],pct=(val/goal)*100;
+  function statusFor(key,val){
+    const goal=TARGETS[key],unit=NUTR_META[key].unit,pct=(val/goal)*100;
     if(val===0)  return{text:"Need "+goal+unit,color:"#5a6478"};
     if(pct>110)  return{text:"Over by "+Math.round(val-goal)+unit,color:"#ef4444"};
     if(pct>=100) return{text:"✓ Goal met",color:"#00e5a0"};
     if(pct<30)   return{text:Math.round(goal-val)+unit+" remaining",color:"#f59e0b"};
-    return       {text:Math.round(goal-val)+unit+" remaining",color:"#00e5a0"};
+    return{text:Math.round(goal-val)+unit+" remaining",color:"#00e5a0"};
   }
 
   const scaled=(item,key)=>fmt(item.baseNutr[key]*item.servings);
 
-  // ── AI COACH ──────────────────────────────────────────────────
-  async function getCoachAdvice() {
-    if(logItems.length===0){showToast("Log some food first!");return;}
-    setCoachLoading(true);setCoachTips(null);
-
-    const hour=new Date().getHours();
-    const timeOfDay=hour<12?"morning":hour<17?"afternoon":"evening";
-    const foodList=logItems.map(i=>i.name+" x"+i.servings).join(", ");
-
-    // Today's nutrient status
-    const todaySummary = Object.entries(TARGETS).map(([key,cfg])=>{
-      const val=totals[key]||0;
-      const pct=Math.round((val/cfg.goal)*100);
-      const ctx=NUTRIENT_CONTEXT[key];
-      return key+": "+Math.round(val)+cfg.unit+" ("+pct+"% of goal) canExceed:"+ctx.canExceed;
-    }).join("\n");
-
-    // Last 7 days of history (excluding today)
-    const last7 = history.filter(d=>d.date!==today).slice(0,7);
-
-    // Build per-nutrient 7-day averages and patterns
-    let historyContext = "";
-    if(last7.length > 0) {
-      const avgSummary = Object.entries(TARGETS).map(([key,cfg])=>{
-        const vals = last7.map(d=>d.totals[key]||0);
-        const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-        const pct = Math.round((avg/cfg.goal)*100);
-        const daysUnder = vals.filter(v=>(v/cfg.goal)<0.7).length;
-        const daysOver  = vals.filter(v=>(v/cfg.goal)>1.1).length;
-        let pattern = "";
-        if(daysUnder>=5) pattern = "consistently low (under 70% on "+daysUnder+"/"+vals.length+" days)";
-        else if(daysOver>=4) pattern = "consistently over (exceeded on "+daysOver+"/"+vals.length+" days)";
-        else if(daysUnder>=3) pattern = "frequently low";
-        else pattern = "generally on track";
-        return cfg.label+": avg "+avg+cfg.unit+" ("+pct+"% of goal) — "+pattern;
-      }).join("\n");
-
-      const calHistory = last7.map(d=>d.date.split(",")[1]?.trim()+": "+Math.round(d.totals.calories||0)+"kcal").join(", ");
-      const proHistory = last7.map(d=>d.date.split(",")[1]?.trim()+": "+Math.round(d.totals.protein||0)+"g").join(", ");
-
-      historyContext = `
-
-LAST ${last7.length} DAYS OF DATA:
-Calorie history: ${calHistory}
-Protein history: ${proHistory}
-
-7-day nutrient averages and patterns:
-${avgSummary}`;
-    }
-
-    const prompt=`You are a friendly, plain-English nutrition coach for a health app called VitalCore. The user is a 45-year-old active male working toward building strength, losing fat, and protecting bad knees.
-
-It is currently ${timeOfDay}. Today they have logged: ${foodList}
-
-TODAY'S NUTRIENT STATUS:
-${todaySummary}
-${historyContext}
-
-Provide 4-6 short, practical coaching tips. Prioritize pattern-based insights when history is available — spot trends the user might not notice themselves. Be conversational and encouraging, not clinical.
-
-RULES:
-- Lead with the most important insight first
-- If history shows a consistent problem (e.g. protein low 5 of 7 days), call that out specifically — it's more valuable than a single-day observation
-- For nutrients marked canExceed:true (protein, fiber, vitC, potassium, magnesium), exceeding is fine
-- For canExceed:false (calories, sodium, sugar, fat, zinc, vitD, calcium, carbs), flag if approaching or over 85%
-- Reference specific days or streaks when relevant ("4 days in a row", "your best protein day this week")
-- Keep each tip to 2-3 sentences max
-- Everyday language only — no medical jargon
-
-Return ONLY a JSON array, no markdown, no backticks:
-[{"type":"good|caution|warn|info","icon":"emoji","title":"short title","body":"2-3 sentence tip"}]
-
-Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attention, "info"=pattern insight`;
-
-    try {
-      const res=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1200,messages:[{role:"user",content:prompt}]})});
-      const data=await res.json();
-      if(data.error){showToast("Coach error: "+String(data.error).slice(0,50));return;}
-      const raw=(data.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-      const tips=JSON.parse(raw);
-      setCoachTips(tips);
-    } catch(e){showToast("Coach error — try again");}
-    finally{setCoachLoading(false);}
+  function dayClass(snap){
+    if(!snap)return"nodata";const pct=(snap.totals.calories||0)/TARGETS.calories*100;
+    if(pct>=90&&pct<=115)return"great";if(pct>=70&&pct<90)return"good";if(pct>115)return"over";return"low";
   }
 
-  // HISTORY helpers
-  function dayClass(snap) {
-    if(!snap) return "nodata";
-    const pct=(snap.totals.calories||0)/TARGETS.calories.goal*100;
-    if(pct>=90&&pct<=115) return "great";
-    if(pct>=70&&pct<90)   return "good";
-    if(pct>115)           return "over";
-    return "low";
-  }
-
-  function HistoryTab() {
-    const last30=history.slice(0,30);
-    const chartDays=[...last30].reverse();
-    const maxCal=Math.max(...chartDays.map(d=>d.totals.calories||0),TARGETS.calories.goal,1);
-    const maxPro=Math.max(...chartDays.map(d=>d.totals.protein||0),TARGETS.protein.goal,1);
+  // ── HISTORY TAB ────────────────────────────────────────────────
+  function HistoryTab(){
+    const last30=history.slice(0,30);const chartDays=[...last30].reverse();
+    const maxCal=Math.max(...chartDays.map(d=>d.totals.calories||0),TARGETS.calories,1);
+    const maxPro=Math.max(...chartDays.map(d=>d.totals.protein||0),TARGETS.protein,1);
     const calDays=[];
-    for(let i=34;i>=0;i--){
-      const d=new Date();d.setDate(d.getDate()-i);
-      const label=d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
-      calDays.push({label,dayNum:d.getDate(),dayOfWeek:d.getDay(),snap:history.find(h=>h.date===label)||null});
-    }
+    for(let i=34;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const label=d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});calDays.push({label,dayNum:d.getDate(),dayOfWeek:d.getDay(),snap:history.find(h=>h.date===label)||null});}
     const padStart=calDays[0].dayOfWeek;
-    return (
-      <div className="vc-hist">
-        {history.length===0?(
-          <div className="vc-hist-empty">
-            <div style={{fontSize:36,marginBottom:12}}>📈</div>
-            <p style={{fontSize:14,lineHeight:1.7}}>Your history builds automatically.<br/>Log food each day and come back<br/>to see your trends over time.</p>
+    const S=`.vh{padding:0 20px 100px}.vhs{margin-bottom:24px}.vht{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px}.vcal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px}.vcl{font-size:9px;color:#3a4456;text-align:center;text-transform:uppercase;padding:2px 0}.vcd{aspect-ratio:1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}.vcd.empty{background:transparent}.vcd.nodata{background:#111418;color:#3a4456}.vcd.great{background:rgba(0,229,160,.25);color:#00e5a0}.vcd.good{background:rgba(0,229,160,.12);color:#00b880}.vcd.low{background:rgba(245,158,11,.15);color:#f59e0b}.vcd.over{background:rgba(239,68,68,.15);color:#ef4444}.vcd.selected{outline:2px solid #00e5a0}.vcleg{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}.vcli{display:flex;align-items:center;gap:4px;font-size:10px;color:#5a6478}.vcld{width:10px;height:10px;border-radius:3px;flex-shrink:0}.vch{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;margin-bottom:12px}.vcbr{display:flex;align-items:flex-end;gap:3px;height:64px}.vcbw{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}.vcb{width:100%;border-radius:3px 3px 0 0;min-height:2px}.vcbl{font-size:8px;color:#3a4456;text-align:center}.vdcard{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;margin-bottom:16px}.vdh{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.vdn{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700}.vdc{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:#f59e0b}.vdns{display:flex;flex-wrap:wrap;gap:5px}.vdnt{font-size:10px;padding:3px 8px;border-radius:4px;font-weight:500}.hit{background:rgba(0,229,160,.12);color:#00e5a0}.miss{background:#111418;color:#5a6478}.over2{background:rgba(245,158,11,.12);color:#f59e0b}.vavg{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px;margin-bottom:8px}`;
+    if(history.length===0) return(
+      <div className="vh">
+        <style>{S}</style>
+        <div style={{textAlign:"center",padding:"40px 20px",color:"#5a6478"}}><div style={{fontSize:36,marginBottom:12}}>📈</div><p style={{fontSize:14,lineHeight:1.7}}>History builds automatically.<br/>Log food each day to see trends.</p></div>
+      </div>
+    );
+    return(
+      <div className="vh"><style>{S}</style>
+        <div className="vhs">
+          <div className="vht">Calorie Heatmap</div>
+          <div className="vcal">
+            {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=><div className="vcl" key={d}>{d}</div>)}
+            {Array(padStart).fill(null).map((_,i)=><div className="vcd empty" key={"p"+i}/>)}
+            {calDays.map(day=>(
+              <div key={day.label} className={"vcd "+dayClass(day.snap)+(histDetail===day.label?" selected":"")}
+                style={{cursor:day.snap?"pointer":"default"}}
+                onClick={()=>day.snap&&setHistDetail(histDetail===day.label?null:day.label)}>
+                {day.dayNum}
+              </div>
+            ))}
           </div>
-        ):(
-          <React.Fragment>
-            <div className="vc-hist-section">
-              <div className="vc-hist-title">Calorie Heatmap — Tap a Day</div>
-              <div className="vc-cal">
-                {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=><div className="vc-cal-lbl" key={d}>{d}</div>)}
-                {Array(padStart).fill(null).map((_,i)=><div className="vc-cal-day empty" key={"p"+i}/>)}
-                {calDays.map(day=>(
-                  <div key={day.label}
-                    className={"vc-cal-day "+dayClass(day.snap)+(histDetail===day.label?" selected":"")}
-                    style={{cursor:day.snap?"pointer":"default"}}
-                    onClick={()=>day.snap&&setHistDetail(histDetail===day.label?null:day.label)}>
-                    {day.dayNum}
-                  </div>
-                ))}
-              </div>
-              <div className="vc-cal-legend">
-                {[["rgba(0,229,160,.25)","On target"],["rgba(0,229,160,.12)","Slightly low"],["rgba(245,158,11,.15)","Under 70%"],["rgba(239,68,68,.15)","Over 115%"]].map(([c,l])=>(
-                  <div className="vc-cal-legend-item" key={l}><div className="vc-cal-dot" style={{background:c}}/>{l}</div>
-                ))}
-              </div>
+          <div className="vcleg">
+            {[["rgba(0,229,160,.25)","On target"],["rgba(0,229,160,.12)","Slightly low"],["rgba(245,158,11,.15)","Under 70%"],["rgba(239,68,68,.15)","Over"]].map(([c,l])=>(
+              <div className="vcli" key={l}><div className="vcld" style={{background:c}}/>{l}</div>
+            ))}
+          </div>
+        </div>
+        {histDetail&&(()=>{const snap=history.find(h=>h.date===histDetail);if(!snap)return null;return(
+          <div className="vdcard">
+            <div className="vdh"><div className="vdn">{snap.date} · {snap.itemCount} items</div><div className="vdc">{Math.round(snap.totals.calories||0)} kcal</div></div>
+            <div className="vdns">{Object.entries(NUTR_META).map(([key,cfg])=>{const val=snap.totals[key]||0,pct=(val/TARGETS[key])*100,cls=pct>=90&&pct<=115?"hit":pct>115?"over2":"miss";return<div className={"vdnt "+cls} key={key}>{cfg.label}: {Math.round(val)}{cfg.unit}</div>;})}</div>
+          </div>
+        );})()}
+        {chartDays.length>1&&(
+          <div className="vhs">
+            <div className="vht">Calorie Trend</div>
+            <div className="vch">
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><span style={{fontSize:13,fontWeight:600}}>Daily Calories</span><span style={{fontSize:10,color:"#5a6478"}}>Goal: {TARGETS.calories} kcal</span></div>
+              <div className="vcbr">{chartDays.map((d,i)=>{const val=d.totals.calories||0,pct=Math.min((val/maxCal)*100,100),color=val>TARGETS.calories*1.15?"#ef4444":val<TARGETS.calories*.7?"#f59e0b":"#00e5a0";return(<div className="vcbw" key={i}><div className="vcb" style={{height:pct+"%",background:color}}/><div className="vcbl">{(d.date.split(",")[1]||"").trim().split(" ")[1]||""}</div></div>);})}</div>
             </div>
-            {histDetail&&(()=>{
-              const snap=history.find(h=>h.date===histDetail);
-              if(!snap) return null;
-              return(
-                <div className="vc-day-card">
-                  <div className="vc-day-hdr">
-                    <div className="vc-day-date">{snap.date} · {snap.itemCount} items</div>
-                    <div className="vc-day-cal">{Math.round(snap.totals.calories||0)} kcal</div>
-                  </div>
-                  <div className="vc-day-nuts">
-                    {Object.entries(TARGETS).map(([key,cfg])=>{
-                      const val=snap.totals[key]||0,pct=(val/cfg.goal)*100;
-                      const cls=pct>=90&&pct<=115?"vc-dnut-hit":pct>115?"vc-dnut-over":"vc-dnut-miss";
-                      return <div className={"vc-dnut "+cls} key={key}>{cfg.label}: {Math.round(val)}{cfg.unit}</div>;
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-            {chartDays.length>1&&(
-              <div className="vc-hist-section">
-                <div className="vc-hist-title">Calorie Trend</div>
-                <div className="vc-chart">
-                  <div className="vc-chart-hdr"><div className="vc-chart-title">Daily Calories</div><div className="vc-chart-goal">Goal: {TARGETS.calories.goal} kcal</div></div>
-                  <div className="vc-chart-bars">
-                    {chartDays.map((d,i)=>{
-                      const val=d.totals.calories||0,pct=Math.min((val/maxCal)*100,100);
-                      const color=val>TARGETS.calories.goal*1.15?"#ef4444":val<TARGETS.calories.goal*.7?"#f59e0b":"#00e5a0";
-                      return(<div className="vc-chart-bar-wrap" key={i}><div className="vc-chart-bar" style={{height:pct+"%",background:color}}/><div className="vc-chart-lbl">{(d.date.split(",")[1]||"").trim().split(" ")[1]||""}</div></div>);
-                    })}
-                  </div>
-                  <div className="vc-chart-legend"><span style={{color:"#00e5a0"}}>■ Target</span><span style={{color:"#f59e0b"}}>■ Low</span><span style={{color:"#ef4444"}}>■ Over</span></div>
-                </div>
-              </div>
-            )}
-            {chartDays.length>1&&(
-              <div className="vc-hist-section">
-                <div className="vc-hist-title">Protein Trend</div>
-                <div className="vc-chart">
-                  <div className="vc-chart-hdr"><div className="vc-chart-title">Daily Protein</div><div className="vc-chart-goal">Goal: {TARGETS.protein.goal}g</div></div>
-                  <div className="vc-chart-bars">
-                    {chartDays.map((d,i)=>{
-                      const val=d.totals.protein||0,pct=Math.min((val/maxPro)*100,100);
-                      return(<div className="vc-chart-bar-wrap" key={i}><div className="vc-chart-bar" style={{height:pct+"%",background:val>=TARGETS.protein.goal*.9?"#00e5a0":"#f59e0b"}}/><div className="vc-chart-lbl">{(d.date.split(",")[1]||"").trim().split(" ")[1]||""}</div></div>);
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-            <div className="vc-hist-section">
-              <div className="vc-hist-title">30-Day Nutrient Averages</div>
-              {Object.entries(TARGETS).map(([key,cfg])=>{
-                const avg=last30.reduce((s,d)=>s+(d.totals[key]||0),0)/Math.max(last30.length,1);
-                const pct=Math.min((avg/cfg.goal)*100,120),over=pct>110;
-                const color=over?"#ef4444":pct>=80?"#00e5a0":pct>=50?"#f59e0b":"#3a4456";
-                const msg=over?"Averaging over by "+Math.round(avg-cfg.goal)+cfg.unit:pct>=80?"✓ Consistently meeting goal":pct>=50?Math.round(cfg.goal-avg)+cfg.unit+" short on average":"Significantly under — avg "+Math.round(pct)+"% of goal";
-                return(
-                  <div className="vc-avg-item" key={key}>
-                    <div className="vc-nhdr"><span className="vc-nname">{cfg.label}</span><span className="vc-nvals"><strong>{Math.round(avg)}{cfg.unit}</strong> avg / {cfg.goal}{cfg.unit}</span></div>
-                    <div className="vc-track"><div className="vc-fill" style={{width:Math.min(pct,100)+"%",background:color}}/></div>
-                    <div className="vc-nst" style={{color}}>{msg}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </React.Fragment>
+          </div>
         )}
+        {chartDays.length>1&&(
+          <div className="vhs">
+            <div className="vht">Protein Trend</div>
+            <div className="vch">
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><span style={{fontSize:13,fontWeight:600}}>Daily Protein</span><span style={{fontSize:10,color:"#5a6478"}}>Goal: {TARGETS.protein}g</span></div>
+              <div className="vcbr">{chartDays.map((d,i)=>{const val=d.totals.protein||0,pct=Math.min((val/maxPro)*100,100);return(<div className="vcbw" key={i}><div className="vcb" style={{height:pct+"%",background:val>=TARGETS.protein*.9?"#00e5a0":"#f59e0b"}}/><div className="vcbl">{(d.date.split(",")[1]||"").trim().split(" ")[1]||""}</div></div>);})}</div>
+            </div>
+          </div>
+        )}
+        <div className="vhs">
+          <div className="vht">30-Day Averages</div>
+          {Object.entries(NUTR_META).map(([key,cfg])=>{
+            const avg=last30.reduce((s,d)=>s+(d.totals[key]||0),0)/Math.max(last30.length,1);
+            const pct=Math.min((avg/TARGETS[key])*100,120),over=pct>110;
+            const color=over?"#ef4444":pct>=80?"#00e5a0":pct>=50?"#f59e0b":"#3a4456";
+            const msg=over?"Over by "+Math.round(avg-TARGETS[key])+cfg.unit+" avg":pct>=80?"✓ Consistently meeting goal":pct>=50?Math.round(TARGETS[key]-avg)+cfg.unit+" short avg":"Significantly under — "+Math.round(pct)+"% avg";
+            return(
+              <div className="vavg" key={key}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}><span style={{fontSize:13,fontWeight:500}}>{cfg.label}</span><span style={{fontSize:12,color:"#5a6478"}}><strong style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:15,fontWeight:700,color:"#e8edf2"}}>{Math.round(avg)}{cfg.unit}</strong> avg / {TARGETS[key]}{cfg.unit}</span></div>
+                <div style={{height:6,background:"#111418",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,width:Math.min(pct,100)+"%",background:color}}/></div>
+                <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,marginTop:5,fontWeight:500,color}}>{msg}</div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
 
-  function CoachTab() {
-    // Auto-trigger advice when tab opens and items are logged
-    React.useEffect(() => {
-      if(logItems.length > 0 && !coachTips && !coachLoading) {
-        getCoachAdvice();
-      }
-    }, []);
-
-    return (
-      <div className="vc-coach">
-        {logItems.length===0&&(
-          <div className="vc-coach-empty">
-            <div className="vc-coach-empty-icon">🥗</div>
-            <p style={{fontSize:14,color:"#5a6478",lineHeight:1.6}}>Log some food first, then come back here for personalized advice based on your actual day.</p>
-          </div>
-        )}
-
-        {coachLoading&&(
-          <div className="vc-coach-loading">
-            <div className="vc-coach-loading-pulse"/>
-            <p>Reviewing your nutrition…</p>
-          </div>
-        )}
-
+  // ── COACH TAB ──────────────────────────────────────────────────
+  function CoachTab(){
+    useEffect(()=>{if(logItems.length>0&&!coachTips&&!coachLoading)getCoachAdvice();},[]);
+    const S=`.vcoach{padding:0 20px 100px}.vcs{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:16px}.vcst{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:10px}.vcstx{font-size:14px;color:#e8edf2;line-height:1.7}.vct{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:12px;animation:vci .3s ease}.vct.warn{border-color:#ef4444}.vct.caution{border-color:#f59e0b}.vct.good{border-color:#00e5a0}.vct.info{border-color:#4fc3f7}.vcth{display:flex;align-items:center;gap:10px;margin-bottom:8px}.vcticon{font-size:22px;flex-shrink:0}.vcttitle{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.5px}.vct.warn .vcttitle{color:#ef4444}.vct.caution .vcttitle{color:#f59e0b}.vct.good .vcttitle{color:#00e5a0}.vct.info .vcttitle{color:#4fc3f7}.vctb{font-size:13px;color:#8a9ab0;line-height:1.6}.vcl2{text-align:center;padding:30px}.vclp{width:50px;height:50px;border-radius:50%;border:3px solid #00e5a0;animation:vcp 1.2s ease-in-out infinite;margin:0 auto 14px}`;
+    return(
+      <div className="vcoach"><style>{S}</style>
+        {logItems.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:"#5a6478",background:"#161b22",border:"1px solid #1e2530",borderRadius:16}}><div style={{fontSize:36,marginBottom:12}}>🥗</div><p style={{fontSize:14,lineHeight:1.6}}>Log some food first, then<br/>the Coach will analyze your day.</p></div>}
+        {coachLoading&&<div className="vcl2"><div className="vclp"/><p style={{color:"#5a6478",fontSize:13}}>Reviewing your nutrition…</p></div>}
         {coachTips&&!coachLoading&&(
           <React.Fragment>
-            <div className="vc-coach-summary">
-              <div className="vc-coach-summary-title">Today at a Glance</div>
-              <div className="vc-coach-summary-text">
-                {Math.round(totals.calories||0)} kcal · {Math.round(totals.protein||0)}g protein · {logItems.length} items logged
-              </div>
-            </div>
+            <div className="vcs"><div className="vcst">Today at a Glance</div><div className="vcstx">{Math.round(totals.calories||0)} kcal · {Math.round(totals.protein||0)}g protein · {logItems.length} items</div></div>
             {coachTips.map((tip,i)=>(
-              <div className={"vc-coach-tip "+tip.type} key={i}>
-                <div className="vc-coach-tip-hdr">
-                  <div className="vc-coach-tip-icon">{tip.icon}</div>
-                  <div className="vc-coach-tip-title">{tip.title}</div>
-                </div>
-                <div className="vc-coach-tip-body">{tip.body}</div>
+              <div className={"vct "+tip.type} key={i}>
+                <div className="vcth"><div className="vcticon">{tip.icon}</div><div className="vcttitle">{tip.title}</div></div>
+                <div className="vctb">{tip.body}</div>
               </div>
             ))}
-            <button className="vc-coach-btn" onClick={getCoachAdvice} disabled={coachLoading}
-              style={{marginTop:16,background:"none",border:"1px solid #1e2530",color:"#5a6478",fontSize:14}}>
+            <button onClick={getCoachAdvice} disabled={coachLoading}
+              style={{width:"100%",background:"none",border:"1px solid #1e2530",color:"#5a6478",borderRadius:12,padding:14,fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,cursor:"pointer",marginTop:4}}>
               🔄 Refresh Advice
             </button>
           </React.Fragment>
@@ -844,38 +561,143 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
     );
   }
 
-  return (
+  // ── RECIPE TAB ─────────────────────────────────────────────────
+  function RecipeTab(){
+    const nameRef=useRef(null);const ingredientsRef=useRef(null);
+    const imgData=recipeImgData;const setImgData=setRecipeImgData;
+    const pendingNutr=recipePendingNutr;const setPendingNutr=setRecipePendingNutr;
+
+    useEffect(()=>{
+      if(nameRef.current)nameRef.current.value=recipeName;
+      if(ingredientsRef.current)ingredientsRef.current.value=recipeIngredients;
+    },[recipeView]);
+
+    async function handleAnalyze(){
+      const name=nameRef.current?.value||recipeName;const ingredients=ingredientsRef.current?.value||recipeIngredients;
+      if(!name.trim()&&!ingredients.trim()&&!imgData){showToast("Add a name, ingredients, or photo");return;}
+      setRecipeName(name);setRecipeIngredients(ingredients);
+      const nutr=await analyzeRecipe(name||"Custom Recipe",ingredients,imgData);
+      if(nutr)setPendingNutr(nutr);
+    }
+
+    function handleSave(){
+      if(!pendingNutr)return;
+      const name=nameRef.current?.value||recipeName;const ingredients=ingredientsRef.current?.value||recipeIngredients;
+      const recipe={id:activeRecipe?.id||Date.now(),name:name||"Custom Recipe",emoji:pendingNutr.emoji||"🍽️",ingredients,servingsInRecipe:pendingNutr.servingsInRecipe||1,nutr:{calories:+pendingNutr.calories||0,protein:+pendingNutr.protein||0,carbs:+pendingNutr.carbs||0,fat:+pendingNutr.fat||0,fiber:+pendingNutr.fiber||0,sodium:+pendingNutr.sodium||0,calcium:+pendingNutr.calcium||0,magnesium:+pendingNutr.magnesium||0,vitD:+pendingNutr.vitD||0,vitC:+pendingNutr.vitC||0,potassium:+pendingNutr.potassium||0,zinc:+pendingNutr.zinc||0,sugar:+pendingNutr.sugar||0},createdAt:Date.now()};
+      saveRecipe(recipe);
+      setRecipeName("");setRecipeIngredients("");setRecipeImgData(null);setRecipePendingNutr(null);setActiveRecipe(null);setRecipeView("list");
+      showToast("✓ "+recipe.name+" saved");
+    }
+
+    function handleRecipeImg(e){const file=e.target.files[0];if(!file)return;e.target.value="";compressImage(file,p=>setRecipeImgData(p.base64));}
+    function openEdit(recipe){setActiveRecipe(recipe);setRecipeName(recipe.name);setRecipeIngredients(recipe.ingredients||"");setRecipePendingNutr({...recipe.nutr,emoji:recipe.emoji,servingsInRecipe:recipe.servingsInRecipe});setRecipeImgData(null);setRecipeView("new");}
+    function openNew(){setActiveRecipe(null);setRecipeName("");setRecipeIngredients("");setRecipeImgData(null);setRecipePendingNutr(null);setRecipeView("new");}
+
+    const S=`.vrec{padding:0 20px 100px}.vrb{width:100%;background:#00e5a0;color:#000;border:none;border-radius:12px;padding:14px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-bottom:14px;transition:background .2s}.vrb:hover{background:#00ffb3}.vrb:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed}.vrb.sec{background:none;border:1px solid #1e2530;color:#5a6478;margin-bottom:0}.vrb.sec:hover{border-color:#00e5a0;color:#00e5a0}.vrb.blue{background:#4fc3f7;margin-bottom:8px}.vrf{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:14px}.vrft{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px}.vri{width:100%;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:10px;transition:border-color .2s}.vri:focus{border-color:#00e5a0}.vrta{width:100%;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;min-height:120px;outline:none;margin-bottom:10px;line-height:1.5;transition:border-color .2s}.vrta:focus{border-color:#00e5a0}.vrib{width:100%;background:#111418;border:2px dashed #1e2530;border-radius:10px;padding:14px;color:#5a6478;font-size:13px;cursor:pointer;margin-bottom:10px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}.vrib:hover{border-color:#00e5a0;color:#00e5a0}.vrng{background:#111418;border-radius:10px;padding:12px;margin-bottom:10px}.vrngt{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:8px}.vrngg{display:grid;grid-template-columns:1fr 1fr;gap:5px}.vrngi{font-size:11px;color:#8a9ab0;padding:3px 0}.vrcard{background:#161b22;border:1px solid #1e2530;border-radius:14px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:12px}.vrci{font-size:28px;width:50px;height:50px;background:#111418;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid #1e2530}.vrcd{flex:1;min-width:0}.vrcn{font-weight:600;font-size:15px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vrcm{font-size:11px;color:#5a6478}.vrca{display:flex;gap:6px;flex-shrink:0}.vrclog{background:#00e5a0;color:#000;border:none;border-radius:8px;padding:7px 12px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}.vrced{background:none;border:1px solid #1e2530;color:#5a6478;border-radius:8px;padding:7px 10px;font-size:13px;cursor:pointer}.vrcdl{background:none;border:none;color:#5a6478;cursor:pointer;font-size:15px;padding:4px}.vrh{font-size:11px;color:#3a4456;line-height:1.6;margin-bottom:10px;padding:10px 12px;background:#111418;border-radius:8px}`;
+
+    if(recipeView==="new") return(
+      <div className="vrec"><style>{S}</style>
+        <div className="vrf">
+          <div className="vrft">{activeRecipe?"Edit Recipe":"New Recipe"}</div>
+          <input ref={nameRef} className="vri" placeholder="Recipe name (e.g. Homemade Breakfast Tacos)" defaultValue={recipeName}/>
+          <div className="vrh">📝 List ingredients with amounts. More detail = more accurate estimate.</div>
+          <textarea ref={ingredientsRef} className="vrta" placeholder={"e.g.\n3 eggs\n3 strips bacon\n2 corn tortillas (fried)\n1/4 cup O'Brien potatoes\n2 tbsp shredded cheddar"} defaultValue={recipeIngredients}/>
+          {imgData?(
+            <div style={{position:"relative",marginBottom:10}}>
+              <img src={"data:image/jpeg;base64,"+imgData} style={{width:"100%",borderRadius:10,marginBottom:0,display:"block",maxHeight:180,objectFit:"cover"}} alt="recipe"/>
+              <button onClick={()=>setImgData(null)} style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.7)",color:"#e8edf2",border:"none",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontSize:12}}>Remove</button>
+            </div>
+          ):(
+            <button className="vrib" onClick={()=>recipeImgRef.current.click()}>📷 Add recipe or ingredient photo (optional)</button>
+          )}
+          {pendingNutr&&(
+            <div className="vrng">
+              <div className="vrngt">Estimated per serving ({pendingNutr.servingsInRecipe||1} servings)</div>
+              <div className="vrngg">{Object.entries(NUTR_META).map(([key,cfg])=><div className="vrngi" key={key}>{cfg.label}: <strong style={{color:"#e8edf2"}}>{Math.round(pendingNutr[key]||0)}{cfg.unit}</strong></div>)}</div>
+            </div>
+          )}
+          <button className="vrb" onClick={handleAnalyze} disabled={recipeAnalyzing}>{recipeAnalyzing?"Analyzing…":"🔍 Estimate Nutrition"}</button>
+          {pendingNutr&&<button className="vrb blue" onClick={handleSave}>💾 Save Recipe</button>}
+          <button className="vrb sec" onClick={()=>{setRecipeView("list");setActiveRecipe(null);}}>← Back</button>
+        </div>
+        <input ref={recipeImgRef} type="file" accept="image/*" onChange={handleRecipeImg} style={{display:"none"}}/>
+      </div>
+    );
+
+    return(
+      <div className="vrec"><style>{S}</style>
+        <button className="vrb" onClick={openNew}>+ New Recipe</button>
+        {recipes.length===0?(
+          <div style={{textAlign:"center",padding:"40px 20px",color:"#5a6478"}}><div style={{fontSize:36,marginBottom:12}}>👨‍🍳</div><p style={{fontSize:14,lineHeight:1.7}}>Save homemade recipes here.<br/>Add ingredients and AI estimates<br/>nutrition per serving.</p></div>
+        ):recipes.map(recipe=>(
+          <div className="vrcard" key={recipe.id}>
+            <div className="vrci">{recipe.emoji}</div>
+            <div className="vrcd">
+              <div className="vrcn">{recipe.name}</div>
+              <div className="vrcm">{Math.round(recipe.nutr.calories)} kcal · {Math.round(recipe.nutr.protein)}g protein · {recipe.servingsInRecipe} servings</div>
+            </div>
+            <div className="vrca">
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:5}}>
+                  <button style={{width:24,height:24,background:"#111418",border:"1px solid #1e2530",color:"#e8edf2",fontSize:14,cursor:"pointer",borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>saveRecipe({...recipe,_logSrv:Math.max(0.5,+((recipe._logSrv||1)-.5).toFixed(1))})}>−</button>
+                  <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,minWidth:20,textAlign:"center",fontSize:14}}>{recipe._logSrv||1}</span>
+                  <button style={{width:24,height:24,background:"#111418",border:"1px solid #1e2530",color:"#e8edf2",fontSize:14,cursor:"pointer",borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>saveRecipe({...recipe,_logSrv:Math.min(10,+((recipe._logSrv||1)+.5).toFixed(1))})}>+</button>
+                </div>
+                <button className="vrclog" onClick={()=>logRecipe(recipe,recipe._logSrv||1)}>Log</button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <button className="vrced" onClick={()=>openEdit(recipe)}>✏️</button>
+                <button className="vrcdl" onClick={()=>{if(window.confirm("Delete "+recipe.name+"?"))deleteRecipe(recipe.id);}}>✕</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── PROFILE SWITCH MODAL ───────────────────────────────────────
+  if(!profile||showProfileSwitch){
+    return <ProfileScreen onSelect={(p)=>{setActiveId(p.id);setProfile(p);setShowProfileSwitch(false);}}/>;
+  }
+
+  const profiles=getProfiles();
+  const profileIdx=profiles.findIndex(p=>p.id===uid);
+
+  // ── CSS ────────────────────────────────────────────────────────
+  const S=`.vc{background:#0a0c0f;color:#e8edf2;font-family:'DM Sans',sans-serif;min-height:100vh;max-width:480px;margin:0 auto}.vch{padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between}.vlogo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:26px;letter-spacing:2px;text-transform:uppercase;color:#00e5a0}.vlogo span{color:#e8edf2}.vhdr-right{display:flex;align-items:center;gap:8px}.vdate{background:#161b22;border:1px solid #1e2530;border-radius:20px;padding:6px 14px;font-size:12px;color:#5a6478}.vavatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:15px;color:#000;cursor:pointer;flex-shrink:0;border:2px solid transparent;transition:border-color .2s}.vavatar:hover{border-color:#e8edf2}.vsum{padding:20px}.vscard{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:20px}.vring{position:relative;width:110px;height:110px;flex-shrink:0}.vring svg{transform:rotate(-90deg)}.vringc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}.vringp{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:#00e5a0;line-height:1}.vringl{font-size:9px;color:#5a6478;text-transform:uppercase;letter-spacing:1px;margin-top:2px}.vstitle{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}.vchips{display:flex;gap:8px;flex-wrap:wrap}.vchip{background:#111418;border:1px solid #1e2530;border-radius:8px;padding:6px 10px}.vchipv{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;display:block;line-height:1}.vchipl{color:#5a6478;font-size:10px;text-transform:uppercase;letter-spacing:.5px}.vtabs{display:flex;gap:6px;padding:0 20px 16px;border-bottom:1px solid #1e2530;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.vtabs::-webkit-scrollbar{display:none}.vtab{background:none;border:1px solid #1e2530;color:#5a6478;padding:8px 14px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:all .18s;border-radius:8px;white-space:nowrap;flex-shrink:0}.vtab.active{background:#00e5a0;color:#000;border-color:#00e5a0}.vcam{padding:20px}.vcamc{background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:20px}.vcaml{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:14px;display:block}.vpslot{border:2px dashed #1e2530;border-radius:12px;overflow:hidden;position:relative;cursor:pointer;transition:border-color .2s}.vpslot:hover{border-color:#00e5a0}.vpslot.filled{border-style:solid;border-color:#00e5a0}.vpse{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px}.vpsb{position:absolute;top:6px;right:6px;background:#00e5a0;color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}.vpsr{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.7);color:#e8edf2;border:none;border-radius:4px;font-size:12px;padding:2px 6px;cursor:pointer}.vcamb{display:flex;align-items:center;gap:14px;background:#111418;border:1px solid #1e2530;border-radius:14px;padding:16px;cursor:pointer;width:100%;text-align:left;transition:border-color .18s,background .18s;color:#e8edf2}.vcamb:hover{border-color:#00e5a0;background:rgba(0,229,160,.06)}.vcambi{font-size:26px;width:46px;height:46px;background:#161b22;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}.vcambt{flex:1}.vcambttl{font-size:15px;font-weight:600;display:block}.vcambsub{font-size:12px;color:#5a6478;display:block;margin-top:2px}.vprev{width:100%;border-radius:12px;border:1px solid #1e2530;margin-bottom:14px;display:block}.vana{width:100%;background:#00e5a0;color:#000;border:none;border-radius:10px;padding:16px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:background .2s}.vana:hover{background:#00ffb3}.vana:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed}.vdiv{display:flex;align-items:center;gap:12px;margin:14px 0;color:#5a6478;font-size:12px}.vdiv::before,.vdiv::after{content:'';flex:1;height:1px;background:#1e2530}.vlp{background:#161b22;border:1px solid #f59e0b;border-radius:14px;padding:18px;text-align:center}.vlpi{font-size:32px;margin-bottom:10px}.vlpt{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}.vlps{font-size:13px;color:#5a6478;line-height:1.5;margin-bottom:14px}.vlpb{background:#f59e0b;color:#000;border:none;border-radius:10px;padding:12px 20px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;cursor:pointer;width:100%}.vinput{padding:0 20px 20px}.vinputc{background:#161b22;border:1px solid #1e2530;border-radius:16px;padding:16px}.vinputl{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:10px;display:block}.vinputr{display:flex;gap:10px;align-items:flex-end}.vta{flex:1;background:#111418;border:1px solid #1e2530;border-radius:10px;padding:12px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;resize:none;min-height:52px;max-height:120px;line-height:1.5;outline:none;transition:border-color .2s}.vta::placeholder{color:#3a4456}.vta:focus{border-color:#00e5a0}.vlogb{background:#00e5a0;color:#000;border:none;border-radius:10px;padding:14px 18px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;white-space:nowrap;transition:background .2s;flex-shrink:0}.vlogb:hover{background:#00ffb3}.vlogb:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed}.vsrv{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid #1e2530}.vsrvl{font-size:12px;color:#5a6478}.vsrvc{display:flex;align-items:center}.vsrvb{width:32px;height:32px;background:#111418;border:1px solid #1e2530;color:#e8edf2;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;user-select:none}.vsrvb:first-child{border-radius:8px 0 0 8px}.vsrvb:last-child{border-radius:0 8px 8px 0}.vsrvb:hover{background:#1e2530;color:#00e5a0}.vsrvb:disabled{opacity:.3;cursor:not-allowed}.vsrvv{min-width:40px;height:32px;background:#111418;border-top:1px solid #1e2530;border-bottom:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700}.vex{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.vexb{background:#111418;border:1px solid #1e2530;border-radius:20px;padding:5px 12px;font-size:11px;color:#5a6478;cursor:pointer;transition:all .18s;white-space:nowrap}.vexb:hover{border-color:#00e5a0;color:#00e5a0}.vlib{padding:0 20px 100px}.vlibsr{background:#111418;border:1px solid #1e2530;border-radius:10px;padding:11px 14px;color:#e8edf2;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;width:100%;margin-bottom:14px;transition:border-color .2s}.vlibsr::placeholder{color:#3a4456}.vlibsr:focus{border-color:#00e5a0}.vlibitem{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:10px}.vlibicon{width:42px;height:42px;border-radius:8px;background:#111418;border:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}.vlibdet{flex:1;min-width:0}.vlibname{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vlibmac{font-size:11px;color:#5a6478;margin-top:2px}.vlibadd{background:#00e5a0;color:#000;border:none;border-radius:8px;padding:8px 14px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer;flex-shrink:0;transition:background .2s}.vlibadd:hover{background:#00ffb3}.vlibdel{background:none;border:none;color:#5a6478;cursor:pointer;font-size:14px;padding:4px;transition:color .2s;flex-shrink:0}.vlibdel:hover{color:#ef4444}.vnut{padding:0 20px 20px}.vnuts{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:12px}.vnutl{display:flex;flex-direction:column;gap:10px}.vnutitem{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:12px 14px}.vnuthr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}.vnutn{font-size:13px;font-weight:500}.vnutv{font-size:12px;color:#5a6478}.vnutv strong{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:#e8edf2}.vbar{height:6px;background:#111418;border-radius:3px;overflow:hidden}.vbarf{height:100%;border-radius:3px;transition:width .9s cubic-bezier(.34,1.56,.64,1)}.vnutst{font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-top:5px;font-weight:500}.vlog{padding:0 20px 100px}.vlogh{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.vrst{background:none;border:1px solid #1e2530;color:#5a6478;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}.vrst:hover{border-color:#ef4444;color:#ef4444}.vllist{display:flex;flex-direction:column;gap:10px}.vempty{text-align:center;padding:40px 20px;color:#5a6478}.vemptyi{font-size:40px;margin-bottom:12px}.vlitem{background:#161b22;border:1px solid #1e2530;border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;animation:vci .3s ease}.vlicon{width:48px;height:48px;border-radius:10px;background:#111418;border:1px solid #1e2530;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}.vldet{flex:1;min-width:0}.vlname{font-weight:600;font-size:14px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vltime{font-size:11px;color:#5a6478;margin-bottom:7px}.vltags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.vtag{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500}.vtp{background:rgba(0,229,160,.12);color:#00e5a0}.vtc{background:rgba(79,195,247,.12);color:#4fc3f7}.vtf{background:rgba(255,107,53,.12);color:#ff6b35}.vtk{background:rgba(245,158,11,.12);color:#f59e0b}.visrv{display:flex;align-items:center;gap:8px}.visrvl{font-size:11px;color:#5a6478;text-transform:uppercase;letter-spacing:.5px}.visb{width:28px;height:28px;background:#111418;border:1px solid #1e2530;color:#e8edf2;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:all .15s;user-select:none;flex-shrink:0}.visb:hover{background:#1e2530;border-color:#00e5a0;color:#00e5a0}.visb:disabled{opacity:.3;cursor:not-allowed}.visv{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;min-width:28px;text-align:center}.vlright{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}.vldel{background:none;border:none;color:#5a6478;cursor:pointer;font-size:15px;padding:4px;line-height:1;transition:color .2s}.vldel:hover{color:#ef4444}.vexpand{background:none;border:none;color:#5a6478;font-size:11px;cursor:pointer;padding:4px 0;text-decoration:underline;transition:color .2s}.vexpand:hover{color:#00e5a0}.vdetails{margin-top:10px;padding-top:10px;border-top:1px solid #1e2530}.vdgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}.vdrow{display:flex;align-items:center;justify-content:space-between;background:#111418;border-radius:6px;padding:5px 8px}.vdlbl{font-size:10px;color:#5a6478}.vdval{font-size:12px;font-weight:600;color:#e8edf2;cursor:pointer;border-bottom:1px dashed #3a4456;min-width:40px;text-align:right}.vdval:hover{color:#00e5a0;border-color:#00e5a0}.vdedit{display:flex;align-items:center;gap:4px}.vdinput{background:#0a0c0f;border:1px solid #00e5a0;border-radius:4px;color:#e8edf2;font-size:12px;font-weight:600;width:60px;padding:2px 6px;text-align:right;outline:none}.vdsave{background:#00e5a0;color:#000;border:none;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer}.vnote{font-size:10px;color:#5a6478;font-style:italic;margin-top:4px}.vanalyzing{position:fixed;inset:0;background:rgba(10,12,15,.93);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px}.vpulse{width:80px;height:80px;border-radius:50%;border:3px solid #00e5a0;animation:vcp 1.2s ease-in-out infinite}.vat{font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#00e5a0}.vas{font-size:13px;color:#5a6478}.vtoast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#161b22;border:1px solid #00e5a0;border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;color:#00e5a0;transition:transform .3s ease;z-index:500;white-space:nowrap;pointer-events:none}.vtoast.show{transform:translateX(-50%) translateY(0)}@keyframes vcp{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.18);opacity:.4;}}@keyframes vci{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}`;
+
+  return(
     <React.Fragment>
       <style>{S}</style>
       <div className="vc">
 
-        <header className="vc-hdr">
-          <div className="vc-logo">Vital<span>Core</span></div>
-          <div className="vc-date">{today}</div>
+        <header className="vch">
+          <div className="vlogo">Vital<span>Core</span></div>
+          <div className="vhdr-right">
+            <div className="vdate">{today}</div>
+            <div className="vavatar" style={{background:getColor(profileIdx)}} onClick={()=>setShowProfileSwitch(true)} title="Switch profile">
+              {profile.name[0].toUpperCase()}
+            </div>
+          </div>
         </header>
 
-        <div className="vc-sum">
-          <div className="vc-sum-card">
-            <div className="vc-ring">
+        <div className="vsum">
+          <div className="vscard">
+            <div className="vring">
               <svg width="110" height="110" viewBox="0 0 110 110">
                 <circle cx="55" cy="55" r="46" fill="none" stroke="#1e2530" strokeWidth="8"/>
-                <circle cx="55" cy="55" r="46" fill="none" stroke="#00e5a0" strokeWidth="8"
-                  strokeLinecap="round" strokeDasharray="289" strokeDashoffset={offset}
-                  style={{transition:"stroke-dashoffset 1s ease"}}/>
+                <circle cx="55" cy="55" r="46" fill="none" stroke="#00e5a0" strokeWidth="8" strokeLinecap="round" strokeDasharray="289" strokeDashoffset={offset} style={{transition:"stroke-dashoffset 1s ease"}}/>
               </svg>
-              <div className="vc-ring-ctr">
-                <div className="vc-ring-pct">{calPct}%</div>
-                <div className="vc-ring-lbl">calories</div>
-              </div>
+              <div className="vringc"><div className="vringp">{calPct}%</div><div className="vringl">calories</div></div>
             </div>
             <div>
-              <div className="vc-sum-title">Today's Intake</div>
-              <div className="vc-chips">
-                {[{k:"protein",l:"Protein",c:"#00e5a0",u:"g"},{k:"carbs",l:"Carbs",c:"#4fc3f7",u:"g"},
-                  {k:"fat",l:"Fat",c:"#ff6b35",u:"g"},{k:"calories",l:"kcal",c:"#f59e0b",u:""}].map(m=>(
-                  <div className="vc-chip" key={m.k}>
-                    <span className="vc-chip-v" style={{color:m.c}}>{Math.round(totals[m.k]||0)}{m.u}</span>
-                    <span className="vc-chip-l">{m.l}</span>
+              <div className="vstitle">{profile.name}'s Intake</div>
+              <div className="vchips">
+                {[{k:"protein",l:"Protein",c:"#00e5a0",u:"g"},{k:"carbs",l:"Carbs",c:"#4fc3f7",u:"g"},{k:"fat",l:"Fat",c:"#ff6b35",u:"g"},{k:"calories",l:"kcal",c:"#f59e0b",u:""}].map(m=>(
+                  <div className="vchip" key={m.k}>
+                    <span className="vchipv" style={{color:m.c}}>{Math.round(totals[m.k]||0)}{m.u}</span>
+                    <span className="vchipl">{m.l}</span>
                   </div>
                 ))}
               </div>
@@ -883,122 +705,90 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
           </div>
         </div>
 
-        <div className="vc-tabs">
-          <button className={"vc-tab"+(tab==="camera"?" active":"")} onClick={()=>setTab("camera")}>📷 Camera</button>
-          <button className={"vc-tab"+(tab==="text"?" active":"")} onClick={()=>setTab("text")}>✏️ Type</button>
-          <button className={"vc-tab"+(tab==="library"?" active":"")} onClick={()=>setTab("library")}>📚 Library</button>
-          <button className={"vc-tab"+(tab==="recipes"?" active":"")} onClick={()=>setTab("recipes")}>👨‍🍳 Recipes</button>
-          <button className={"vc-tab"+(tab==="history"?" active":"")} onClick={()=>setTab("history")}>📈 History</button>
-          <button className={"vc-tab"+(tab==="coach"?" active":"")} onClick={()=>{setCoachTips(null);setTab("coach");}}>🤖 Coach</button>
+        <div className="vtabs">
+          <button className={"vtab"+(tab==="camera"?" active":"")} onClick={()=>setTab("camera")}>📷 Camera</button>
+          <button className={"vtab"+(tab==="text"?" active":"")} onClick={()=>setTab("text")}>✏️ Type</button>
+          <button className={"vtab"+(tab==="library"?" active":"")} onClick={()=>setTab("library")}>📚 Library</button>
+          <button className={"vtab"+(tab==="recipes"?" active":"")} onClick={()=>setTab("recipes")}>👨‍🍳 Recipes</button>
+          <button className={"vtab"+(tab==="history"?" active":"")} onClick={()=>setTab("history")}>📈 History</button>
+          <button className={"vtab"+(tab==="coach"?" active":"")} onClick={()=>{setCoachTips(null);setTab("coach");}}>🤖 Coach</button>
         </div>
 
+        {/* CAMERA TAB */}
         {tab==="camera"&&(
-          <div className="vc-cam-wrap">
-            <div className="vc-cam-card">
-              <span className="vc-cam-label">Snap or Upload Photos</span>
-
+          <div className="vcam">
+            <div className="vcamc">
+              <span className="vcaml">Snap or Upload Photos</span>
               {needsLabel&&!preview&&(
-                <div className="vc-label-prompt">
-                  <div className="vc-lp-icon">🏷️</div>
-                  <div className="vc-lp-title">Label Needed</div>
-                  <div className="vc-lp-sub">Snap the nutrition facts label on the back.</div>
-                  <button className="vc-lp-btn" onClick={()=>{setNeedsLabel(false);cameraRef.current.click();}}>📷 Snap Label</button>
+                <div className="vlp"><div className="vlpi">🏷️</div><div className="vlpt">Label Needed</div><div className="vlps">Snap the nutrition facts label on the back.</div>
+                  <button className="vlpb" onClick={()=>{setNeedsLabel(false);cameraRef.current.click();}}>📷 Snap Label</button>
                 </div>
               )}
-
               {!needsLabel&&(
                 <React.Fragment>
-                  {/* FRONT PHOTO SLOT */}
                   <div style={{marginBottom:10}}>
                     <div style={{fontSize:10,color:"#5a6478",textTransform:"uppercase",letterSpacing:1,marginBottom:6,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600}}>Step 1 — Product Front</div>
-                    <div className={"vc-photo-slot"+(preview?" filled":"")} style={{aspectRatio:"16/9"}}
-                      onClick={()=>!preview&&cameraRef.current.click()}>
+                    <div className={"vpslot"+(preview?" filled":"")} style={{aspectRatio:"16/9"}} onClick={()=>!preview&&cameraRef.current.click()}>
                       {preview?(
                         <React.Fragment>
                           <img src={preview.dataUrl} alt="front" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                          <div className="vc-photo-slot-badge">Front ✓</div>
-                          <button className="vc-photo-slot-remove" onClick={e=>{e.stopPropagation();setPreview(null);}}>✕</button>
+                          <div className="vpsb">Front ✓</div>
+                          <button className="vpsr" onClick={e=>{e.stopPropagation();setPreview(null);}}>✕</button>
                         </React.Fragment>
                       ):(
-                        <div className="vc-photo-slot-empty" style={{flexDirection:"row",gap:10}}>
-                          <div className="vc-photo-slot-icon">📦</div>
-                          <div className="vc-photo-slot-lbl" style={{textAlign:"left"}}>Tap to snap or choose<br/><span style={{color:"#5a6478"}}>Front of product for name & brand</span></div>
+                        <div className="vpse" style={{flexDirection:"row",gap:10}}>
+                          <div style={{fontSize:26}}>📦</div>
+                          <div style={{fontSize:12,color:"#5a6478"}}>Tap to snap or choose<br/><span style={{color:"#3a4456"}}>Front of product</span></div>
                         </div>
                       )}
                     </div>
                   </div>
-
-                  {/* LABEL PHOTOS — shown once front is added */}
                   {preview&&(
                     <div style={{marginBottom:14}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                        <div style={{fontSize:10,color:"#5a6478",textTransform:"uppercase",letterSpacing:1,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600}}>
-                          Step 2 — Nutrition Label(s)
-                        </div>
-                        <div style={{fontSize:10,color:"#3a4456"}}>Snap multiple if label wraps around</div>
+                        <div style={{fontSize:10,color:"#5a6478",textTransform:"uppercase",letterSpacing:1,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600}}>Step 2 — Nutrition Label(s)</div>
+                        <div style={{fontSize:10,color:"#3a4456"}}>Multiple if label wraps around</div>
                       </div>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-                        {/* Existing label photos */}
                         {labelPreviews.map((lp,i)=>(
-                          <div key={i} className="vc-photo-slot filled" style={{aspectRatio:"1"}}>
+                          <div key={i} className="vpslot filled" style={{aspectRatio:"1"}}>
                             <img src={lp.dataUrl} alt={"label "+(i+1)} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                            <div className="vc-photo-slot-badge" style={{fontSize:8,padding:"1px 4px"}}>{i+1}</div>
-                            <button className="vc-photo-slot-remove"
-                              onClick={e=>{e.stopPropagation();setLabelPreviews(prev=>prev.filter((_,j)=>j!==i));}}>✕</button>
+                            <div className="vpsb" style={{fontSize:8,padding:"1px 4px"}}>{i+1}</div>
+                            <button className="vpsr" onClick={e=>{e.stopPropagation();setLabelPreviews(prev=>prev.filter((_,j)=>j!==i));}}>✕</button>
                           </div>
                         ))}
-                        {/* Add more slot — show if under 4 */}
                         {labelPreviews.length<4&&(
-                          <div className="vc-photo-slot" style={{aspectRatio:"1"}}
-                            onClick={()=>labelRef.current.click()}>
-                            <div className="vc-photo-slot-empty">
-                              <div className="vc-photo-slot-icon" style={{fontSize:20}}>🏷️</div>
-                              <div className="vc-photo-slot-lbl" style={{fontSize:9}}>
-                                {labelPreviews.length===0?"Add label":"Add more"}
-                              </div>
-                            </div>
+                          <div className="vpslot" style={{aspectRatio:"1"}} onClick={()=>labelRef.current.click()}>
+                            <div className="vpse"><div style={{fontSize:20}}>🏷️</div><div style={{fontSize:9,color:"#5a6478",textAlign:"center"}}>{labelPreviews.length===0?"Add label":"Add more"}</div></div>
                           </div>
                         )}
                       </div>
-                      {labelPreviews.length===0&&(
-                        <div style={{marginTop:8,fontSize:11,color:"#3a4456",lineHeight:1.5}}>
-                          💡 Optional but recommended for supplements — snap the nutrition facts panel for exact values
-                        </div>
-                      )}
-                      {labelPreviews.length>0&&(
-                        <div style={{marginTop:8,fontSize:11,color:"#5a6478"}}>
-                          {labelPreviews.length} label photo{labelPreviews.length>1?"s":""} added — AI will read all panels
-                        </div>
-                      )}
+                      {labelPreviews.length>0&&<div style={{marginTop:8,fontSize:11,color:"#5a6478"}}>{labelPreviews.length} label photo{labelPreviews.length>1?"s":""} — AI reads all panels</div>}
                     </div>
                   )}
-
-                  {/* Gallery option when no front photo yet */}
                   {!preview&&(
-                    <button className="vc-cam-btn" onClick={()=>galleryRef.current.click()}>
-                      <div className="vc-cam-icon">🖼️</div>
-                      <div className="vc-cam-txt"><span className="vc-cam-ttl">Choose from Gallery</span><span className="vc-cam-sub">Pick existing photo</span></div>
+                    <button className="vcamb" onClick={()=>galleryRef.current.click()}>
+                      <div className="vcambi">🖼️</div>
+                      <div className="vcambt"><span className="vcambttl">Choose from Gallery</span><span className="vcambsub">Pick existing photo</span></div>
                     </button>
                   )}
-
                   {preview&&(
                     <React.Fragment>
-                      <div className="vc-srv-row" style={{marginBottom:14}}>
-                        <span className="vc-srv-label">Servings</span>
-                        <div className="vc-srv-ctrl">
-                          <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.max(0.5,+(s-.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
-                          <div className="vc-srv-val">{servings}</div>
-                          <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.min(10,+(s+.5).toFixed(1)))} disabled={servings>=10}>+</button>
+                      <div className="vsrv" style={{marginBottom:14}}>
+                        <span className="vsrvl">Servings</span>
+                        <div className="vsrvc">
+                          <button className="vsrvb" onClick={()=>setServings(s=>Math.max(0.5,+(s-.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
+                          <div className="vsrvv">{servings}</div>
+                          <button className="vsrvb" onClick={()=>setServings(s=>Math.min(10,+(s+.5).toFixed(1)))} disabled={servings>=10}>+</button>
                         </div>
                       </div>
-                      <button className="vc-analyze-btn" onClick={analyzeImage} disabled={analyzing}>
+                      <button className="vana" onClick={analyzeImage} disabled={analyzing}>
                         {labelPreviews.length>1?"Analyze "+labelPreviews.length+" Labels & Log":labelPreviews.length===1?"Analyze Both & Log":"Analyze & Log"}
                       </button>
                     </React.Fragment>
                   )}
                 </React.Fragment>
               )}
-
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{display:"none"}}/>
               <input ref={galleryRef} type="file" accept="image/*" onChange={handleFileSelect} style={{display:"none"}}/>
               <input ref={labelRef} type="file" accept="image/*" capture="environment" onChange={handleLabelSelect} style={{display:"none"}}/>
@@ -1007,139 +797,127 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
           </div>
         )}
 
+        {/* TEXT TAB */}
         {tab==="text"&&(
-          <div className="vc-input-wrap">
-            <div className="vc-input-card">
-              <span className="vc-input-label">Describe What You Ate</span>
-              <div className="vc-input-row">
-                <textarea ref={textareaRef} className="vc-textarea"
-                  placeholder='"Premier Protein shake" or "6oz chicken breast"'
+          <div className="vinput">
+            <div className="vinputc">
+              <span className="vinputl">Describe What You Ate</span>
+              <div className="vinputr">
+                <textarea ref={textareaRef} className="vta" placeholder='"Premier Protein shake" or "6oz chicken breast"'
                   value={input} onChange={e=>setInput(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleLog();}}}
-                  rows={2}/>
-                <button className="vc-log-btn" onClick={handleLog} disabled={!input.trim()||analyzing}>Log It</button>
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleLog();}}} rows={2}/>
+                <button className="vlogb" onClick={handleLog} disabled={!input.trim()||analyzing}>Log It</button>
               </div>
-              <div className="vc-srv-row">
-                <span className="vc-srv-label">Servings</span>
-                <div className="vc-srv-ctrl">
-                  <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.max(0.5,+(s-.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
-                  <div className="vc-srv-val">{servings}</div>
-                  <button className="vc-srv-btn" onClick={()=>setServings(s=>Math.min(10,+(s+.5).toFixed(1)))} disabled={servings>=10}>+</button>
+              <div className="vsrv">
+                <span className="vsrvl">Servings</span>
+                <div className="vsrvc">
+                  <button className="vsrvb" onClick={()=>setServings(s=>Math.max(0.5,+(s-.5).toFixed(1)))} disabled={servings<=0.5}>−</button>
+                  <div className="vsrvv">{servings}</div>
+                  <button className="vsrvb" onClick={()=>setServings(s=>Math.min(10,+(s+.5).toFixed(1)))} disabled={servings>=10}>+</button>
                 </div>
               </div>
-              <div className="vc-examples">
-                {EXAMPLES.map(ex=><button key={ex} className="vc-ex" onClick={()=>{setInput(ex);textareaRef.current&&textareaRef.current.focus();}}>{ex}</button>)}
-              </div>
+              <div className="vex">{EXAMPLES.map(ex=><button key={ex} className="vexb" onClick={()=>{setInput(ex);textareaRef.current&&textareaRef.current.focus();}}>{ex}</button>)}</div>
             </div>
           </div>
         )}
 
+        {/* LIBRARY TAB */}
         {tab==="library"&&(
-          <div className="vc-lib">
-            <input className="vc-lib-search" placeholder="Search your food library…"
-              value={libSearch} onChange={e=>setLibSearch(e.target.value)}/>
+          <div className="vlib">
+            <input className="vlibsr" placeholder="Search your food library…" value={libSearch} onChange={e=>setLibSearch(e.target.value)}/>
             {library.length===0?(
-              <div className="vc-hist-empty"><div style={{fontSize:36,marginBottom:12}}>📚</div><p style={{fontSize:14,lineHeight:1.6}}>Foods you log are saved here<br/>for quick re-logging.</p></div>
+              <div style={{textAlign:"center",padding:"40px 20px",color:"#5a6478"}}><div style={{fontSize:36,marginBottom:12}}>📚</div><p style={{fontSize:14,lineHeight:1.6}}>Foods you log are saved here<br/>for quick re-logging.</p></div>
             ):library.filter(i=>i.name.toLowerCase().includes(libSearch.toLowerCase())).map(item=>(
-              <div className="vc-lib-item" key={item.id}>
-                <div className="vc-lib-icon">{item.emoji}</div>
-                <div className="vc-lib-det">
-                  <div className="vc-lib-name">{item.name}</div>
-                  <div className="vc-lib-macros">{item.baseNutr.calories} kcal · {item.baseNutr.protein}g protein · {item.baseNutr.carbs}g carbs</div>
-                </div>
-                <button className="vc-lib-add" onClick={()=>logFromLib(item)}>+ Log</button>
-                <button className="vc-lib-del" onClick={()=>delFromLib(item.id)}>✕</button>
+              <div className="vlibitem" key={item.id}>
+                <div className="vlibicon">{item.emoji}</div>
+                <div className="vlibdet"><div className="vlibname">{item.name}</div><div className="vlibmac">{item.baseNutr.calories} kcal · {item.baseNutr.protein}g protein</div></div>
+                <button className="vlibadd" onClick={()=>logFromLib(item)}>+ Log</button>
+                <button className="vlibdel" onClick={()=>delFromLib(item.id)}>✕</button>
               </div>
             ))}
           </div>
         )}
 
-        {tab==="history"&&<HistoryTab/>}
         {tab==="recipes"&&<RecipeTab/>}
+        {tab==="history"&&<HistoryTab/>}
         {tab==="coach"&&<CoachTab/>}
 
-        <div className="vc-nutrients">
-          <div className="vc-sec">Daily Progress</div>
-          <div className="vc-nlist">
-            {Object.entries(TARGETS).map(([key,cfg])=>{
-              const val=totals[key]||0,pct=Math.min((val/cfg.goal)*100,100),over=(val/cfg.goal)>1.1,st=statusFor(key,val);
+        {/* NUTRIENT BARS */}
+        <div className="vnut">
+          <div className="vnuts">Daily Progress</div>
+          <div className="vnutl">
+            {Object.entries(NUTR_META).map(([key,cfg])=>{
+              const val=totals[key]||0,pct=Math.min((val/TARGETS[key])*100,100),over=(val/TARGETS[key])>1.1,st=statusFor(key,val);
               return(
-                <div className="vc-nitem" key={key}>
-                  <div className="vc-nhdr">
-                    <span className="vc-nname">{cfg.label}</span>
-                    <span className="vc-nvals"><strong>{Math.round(val)}{cfg.unit}</strong> / {cfg.goal}{cfg.unit}</span>
-                  </div>
-                  <div className="vc-track"><div className="vc-fill" style={{width:pct+"%",background:over?"#ef4444":cfg.color}}/></div>
-                  <div className="vc-nst" style={{color:st.color}}>{st.text}</div>
+                <div className="vnutitem" key={key}>
+                  <div className="vnuthr"><span className="vnutn">{cfg.label}</span><span className="vnutv"><strong>{Math.round(val)}{cfg.unit}</strong> / {TARGETS[key]}{cfg.unit}</span></div>
+                  <div className="vbar"><div className="vbarf" style={{width:pct+"%",background:over?"#ef4444":cfg.color}}/></div>
+                  <div className="vnutst" style={{color:st.color}}>{st.text}</div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        <div className="vc-log">
-          <div className="vc-log-hdr">
-            <div className="vc-sec" style={{marginBottom:0}}>Logged Items</div>
-            {logItems.length>0&&<button className="vc-rst" onClick={resetDay}>Reset Day</button>}
+        {/* LOG */}
+        <div className="vlog">
+          <div className="vlogh">
+            <div className="vnuts" style={{marginBottom:0}}>Logged Items</div>
+            {logItems.length>0&&<button className="vrst" onClick={resetDay}>Reset Day</button>}
           </div>
-          <div className="vc-llist">
+          <div className="vllist">
             {logItems.length===0?(
-              <div className="vc-empty"><div className="vc-ei">🥗</div><p>Snap a photo or type what you ate<br/>to start tracking.</p></div>
+              <div className="vempty"><div className="vemptyi">🥗</div><p style={{fontSize:14,lineHeight:1.6}}>Snap a photo or type what you ate<br/>to start tracking.</p></div>
             ):logItems.map(item=>(
-              <div className="vc-litem" key={item.id}>
-                <div className="vc-licon">{item.emoji}</div>
-                <div className="vc-ldet">
-                  <div className="vc-lname">{item.name}</div>
-                  <div className="vc-ltime">{item.time}</div>
-                  <div className="vc-ltags">
-                    {item.baseNutr.protein>0&&<span className="vc-tag vc-tp">{scaled(item,"protein")}g protein</span>}
-                    {item.baseNutr.carbs>0&&<span className="vc-tag vc-tc">{scaled(item,"carbs")}g carbs</span>}
-                    {item.baseNutr.fat>0&&<span className="vc-tag vc-tf">{scaled(item,"fat")}g fat</span>}
-                    {item.baseNutr.calories>0&&<span className="vc-tag vc-tk">{scaled(item,"calories")} kcal</span>}
+              <div className="vlitem" key={item.id}>
+                <div className="vlicon">{item.emoji}</div>
+                <div className="vldet">
+                  <div className="vlname">{item.name}</div>
+                  <div className="vltime">{item.time}</div>
+                  <div className="vltags">
+                    {item.baseNutr.protein>0&&<span className="vtag vtp">{scaled(item,"protein")}g protein</span>}
+                    {item.baseNutr.carbs>0&&<span className="vtag vtc">{scaled(item,"carbs")}g carbs</span>}
+                    {item.baseNutr.fat>0&&<span className="vtag vtf">{scaled(item,"fat")}g fat</span>}
+                    {item.baseNutr.calories>0&&<span className="vtag vtk">{scaled(item,"calories")} kcal</span>}
                   </div>
-                  <div className="vc-item-srv">
-                    <span className="vc-item-srv-label">Servings</span>
-                    <button className="vc-isb" onClick={()=>changeServings(item.id,-.5)} disabled={item.servings<=0.5}>−</button>
-                    <span className="vc-isv">{item.servings}</span>
-                    <button className="vc-isb" onClick={()=>changeServings(item.id,.5)} disabled={item.servings>=10}>+</button>
+                  <div className="visrv">
+                    <span className="visrvl">Servings</span>
+                    <button className="visb" onClick={()=>changeServings(item.id,-.5)} disabled={item.servings<=0.5}>−</button>
+                    <span className="visv">{item.servings}</span>
+                    <button className="visb" onClick={()=>changeServings(item.id,.5)} disabled={item.servings>=10}>+</button>
                   </div>
-                  <button className="vc-expand-btn" onClick={()=>setExpandedItem(expandedItem===item.id?null:item.id)}>
+                  <button className="vexpand" onClick={()=>setExpandedItem(expandedItem===item.id?null:item.id)}>
                     {expandedItem===item.id?"▲ Hide details":"▼ Verify & edit nutrients"}
                   </button>
                   {expandedItem===item.id&&(
-                    <div className="vc-item-details">
-                      <div className="vc-detail-grid">
-                        {Object.entries(TARGETS).map(([key,cfg])=>{
+                    <div className="vdetails">
+                      <div className="vdgrid">
+                        {Object.entries(NUTR_META).map(([key,cfg])=>{
                           const val=item.baseNutr[key]||0;
                           const isEditing=editingItem&&editingItem.id===item.id&&editingItem.field===key;
                           return(
-                            <div className="vc-detail-row" key={key}>
-                              <span className="vc-detail-lbl">{cfg.label}</span>
+                            <div className="vdrow" key={key}>
+                              <span className="vdlbl">{cfg.label}</span>
                               {isEditing?(
-                                <div className="vc-detail-edit">
-                                  <input className="vc-detail-input" type="number" value={editingItem.value}
+                                <div className="vdedit">
+                                  <input className="vdinput" type="number" value={editingItem.value}
                                     onChange={e=>setEditingItem(ei=>({...ei,value:e.target.value}))}
                                     onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditingItem(null);}}
                                     autoFocus/>
-                                  <button className="vc-detail-save" onClick={commitEdit}>✓</button>
+                                  <button className="vdsave" onClick={commitEdit}>✓</button>
                                 </div>
                               ):(
-                                <span className="vc-detail-val" onClick={()=>startEdit(item.id,key,val)}
-                                  title="Tap to edit">
-                                  {fmt(val)}{cfg.unit}
-                                </span>
+                                <span className="vdval" onClick={()=>startEdit(item.id,key,val)}>{fmt(val)}{cfg.unit}</span>
                               )}
                             </div>
                           );
                         })}
                       </div>
-                      <div className="vc-verify-note">Tap any value to correct it. Changes update your totals instantly.</div>
+                      <div className="vnote">Tap any value to correct it.</div>
                     </div>
                   )}
                 </div>
-                <div className="vc-lright">
-                  <button className="vc-del" onClick={()=>deleteItem(item.id)}>✕</button>
-                </div>
+                <div className="vlright"><button className="vldel" onClick={()=>deleteItem(item.id)}>✕</button></div>
               </div>
             ))}
           </div>
@@ -1147,18 +925,23 @@ Types: "good"=positive/on track, "caution"=worth watching, "warn"=needs attentio
       </div>
 
       {analyzing&&(
-        <div className="vc-analyzing">
-          <div className="vc-pulse"/>
-          <div className="vc-at">Analyzing</div>
-          <div className="vc-as">Looking up nutrition data…</div>
-        </div>
+        <div className="vanalyzing"><div className="vpulse"/><div className="vat">Analyzing</div><div className="vas">Looking up nutrition data…</div></div>
       )}
-      <div className={"vc-toast"+(toast.show?" show":"")}>{toast.msg}</div>
+      <div className={"vtoast"+(toast.show?" show":"")}>{toast.msg}</div>
     </React.Fragment>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<VitalCore/>);
+function App(){
+  const [profile,setProfile]=useState(()=>{
+    const id=getActiveId();if(!id)return null;
+    return getProfiles().find(p=>p.id===id)||null;
+  });
+  if(!profile) return <ProfileScreen onSelect={p=>{setActiveId(p.id);setProfile(p);}}/>;
+  return <VitalCore key={profile.id}/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
