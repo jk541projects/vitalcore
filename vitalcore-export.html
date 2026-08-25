@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VitalCore — Export & Backup</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0a0c0f;color:#e8edf2;font-family:'DM Sans',sans-serif;min-height:100vh;padding:20px;display:flex;align-items:center;justify-content:center;}
+.card{background:#161b22;border:1px solid #1e2530;border-radius:20px;padding:28px;max-width:460px;width:100%;}
+.logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#00e5a0;margin-bottom:4px;}
+.logo span{color:#e8edf2;}
+.sub{font-size:13px;color:#5a6478;margin-bottom:24px;}
+.sec{margin-bottom:20px;}
+.lbl{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5a6478;margin-bottom:10px;display:block;}
+.preview{background:#111418;border:1px solid #1e2530;border-radius:10px;padding:12px 14px;font-size:12px;margin-bottom:6px;}
+.preview.found{border-color:#00e5a0;color:#00e5a0;}
+.preview.empty{color:#3a4456;}
+.btn{width:100%;border:none;border-radius:12px;padding:16px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s;margin-bottom:10px;}
+.btn-primary{background:#00e5a0;color:#000;}
+.btn-primary:hover{background:#00ffb3;}
+.btn-primary:disabled{background:#1e2530;color:#5a6478;cursor:not-allowed;}
+.btn-secondary{background:none;border:1px solid #1e2530;color:#5a6478;}
+.btn-secondary:hover{border-color:#4fc3f7;color:#4fc3f7;}
+.divider{height:1px;background:#1e2530;margin:20px 0;}
+.note{font-size:11px;color:#3a4456;line-height:1.6;padding:10px 12px;background:#111418;border-radius:8px;margin-bottom:14px;}
+.result{border-radius:12px;padding:16px;margin-top:12px;display:none;}
+.result.success{background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.3);}
+.result.error{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);}
+.result-icon{font-size:28px;margin-bottom:8px;}
+.result-title{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+.result.success .result-title{color:#00e5a0;}
+.result.error .result-title{color:#ef4444;}
+.result-body{font-size:13px;color:#8a9ab0;line-height:1.6;}
+.steps{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
+.step{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#8a9ab0;line-height:1.5;}
+.step-num{width:22px;height:22px;border-radius:50%;background:#00e5a0;color:#000;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Vital<span>Core</span></div>
+  <div class="sub">Data Export &amp; Backup Tool</div>
+
+  <div class="sec">
+    <span class="lbl">Data Found on This Device</span>
+    <div class="preview" id="p-profiles">Scanning...</div>
+    <div class="preview" id="p-history">Scanning...</div>
+    <div class="preview" id="p-library">Scanning...</div>
+    <div class="preview" id="p-recipes">Scanning...</div>
+  </div>
+
+  <div class="note">
+    Run this on your <strong>current phone</strong> before switching. Exports everything into one JSON file — save it to Google Drive, then restore on your new phone using the import button below.
+  </div>
+
+  <button class="btn btn-primary" id="export-btn" onclick="exportData()">Export All Data</button>
+
+  <div class="divider"></div>
+
+  <span class="lbl">Restore on New Phone</span>
+  <div class="note">On your new phone, open this page and tap Import to restore from the backup file.</div>
+  <button class="btn btn-secondary" onclick="document.getElementById('import-input').click()">Import Backup File</button>
+  <input type="file" id="import-input" accept=".json" style="display:none" onchange="importData(event)"/>
+
+  <div class="result" id="result">
+    <div class="result-icon" id="r-icon"></div>
+    <div class="result-title" id="r-title"></div>
+    <div class="result-body" id="r-body"></div>
+    <div class="steps" id="r-steps"></div>
+  </div>
+</div>
+
+<script>
+function safeGet(key, fallback) {
+  try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch(e) { return fallback; }
+}
+
+function show(id, found, text) {
+  var el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'preview ' + (found ? 'found' : 'empty');
+}
+
+function scanAll() {
+  var profiles = safeGet('vc_profiles', []);
+  show('p-profiles', profiles.length > 0,
+    profiles.length > 0
+      ? 'Profiles: ' + profiles.map(function(p){return p.name;}).join(', ')
+      : 'No profiles (legacy single-user data will still export)');
+
+  var histCount = 0, libCount = 0, recCount = 0;
+  histCount += safeGet('vc_history', []).length;
+  libCount  += safeGet('vc_library', []).length;
+  recCount  += safeGet('vc_recipes', []).length;
+  profiles.forEach(function(p) {
+    histCount += safeGet('vc_history_'+p.id, []).length;
+    libCount  += safeGet('vc_library_'+p.id, []).length;
+    recCount  += safeGet('vc_recipes_'+p.id, []).length;
+  });
+
+  show('p-history', histCount>0, histCount>0 ? histCount+' days of nutrition history' : 'No history yet');
+  show('p-library', libCount>0,  libCount>0  ? libCount+' items in food library'      : 'Library empty');
+  show('p-recipes', recCount>0,  recCount>0  ? recCount+' saved recipes'              : 'No recipes');
+}
+
+function exportData() {
+  var btn = document.getElementById('export-btn');
+  btn.disabled = true; btn.textContent = 'Exporting...';
+  try {
+    var profiles = safeGet('vc_profiles', []);
+    var activeId = localStorage.getItem('vc_active_profile');
+    var backup = {
+      _version: 2,
+      _exportDate: new Date().toISOString(),
+      profiles: profiles,
+      activeProfileId: activeId,
+      userData: {}
+    };
+    // Legacy data
+    var legacy = {
+      log:     safeGet('vc_log', null),
+      history: safeGet('vc_history', []),
+      library: safeGet('vc_library', []),
+      recipes: safeGet('vc_recipes', [])
+    };
+    if (legacy.history.length > 0 || legacy.library.length > 0 || legacy.recipes.length > 0) {
+      backup.userData['legacy'] = legacy;
+    }
+    // User-scoped data
+    profiles.forEach(function(p) {
+      backup.userData[p.id] = {
+        log:     safeGet('vc_log_'+p.id, null),
+        history: safeGet('vc_history_'+p.id, []),
+        library: safeGet('vc_library_'+p.id, []),
+        recipes: safeGet('vc_recipes_'+p.id, [])
+      };
+    });
+
+    var json = JSON.stringify(backup, null, 2);
+    var blob = new Blob([json], {type: 'application/json'});
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    var date = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = 'vitalcore-backup-'+date+'.json';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+
+    var totalDays = Object.values(backup.userData).reduce(function(s,u){return s+(u.history||[]).length;},0);
+    var totalLib  = Object.values(backup.userData).reduce(function(s,u){return s+(u.library||[]).length;},0);
+    var totalRec  = Object.values(backup.userData).reduce(function(s,u){return s+(u.recipes||[]).length;},0);
+
+    showResult('success', 'Export Complete',
+      'Downloaded vitalcore-backup-'+date+'.json — '+totalDays+' days of history, '+totalLib+' library items, '+totalRec+' recipes.',
+      ['Save the downloaded file to Google Drive (drag into drive.google.com in your browser)',
+       'On your new phone, open jk541projects.github.io/vitalcore/vitalcore-export.html',
+       'Tap Import Backup File and select the JSON from Drive',
+       'Open VitalCore — everything will be exactly as it was']);
+    btn.textContent = 'Done!';
+  } catch(e) {
+    showResult('error', 'Export Failed', e.message, []);
+    btn.disabled = false; btn.textContent = 'Export All Data';
+  }
+}
+
+function importData(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var backup = JSON.parse(e.target.result);
+      if (!backup._version || !backup.userData) {
+        showResult('error', 'Invalid File', 'This does not look like a VitalCore backup file.', []); return;
+      }
+      // Restore profiles
+      if (backup.profiles && backup.profiles.length > 0) {
+        var existing = safeGet('vc_profiles', []);
+        backup.profiles.forEach(function(p) { if (!existing.find(function(ex){return ex.id===p.id;})) existing.push(p); });
+        localStorage.setItem('vc_profiles', JSON.stringify(existing));
+      }
+      if (backup.activeProfileId && !localStorage.getItem('vc_active_profile')) {
+        localStorage.setItem('vc_active_profile', backup.activeProfileId);
+      }
+      // Restore data
+      Object.entries(backup.userData).forEach(function(entry) {
+        var uid = entry[0], data = entry[1];
+        if (uid === 'legacy') {
+          var profiles = safeGet('vc_profiles', []);
+          var targetId = backup.activeProfileId || (profiles[0] && profiles[0].id);
+          if (targetId) {
+            if (data.history && data.history.length > 0) localStorage.setItem('vc_history_'+targetId, JSON.stringify(data.history));
+            if (data.library && data.library.length > 0) localStorage.setItem('vc_library_'+targetId, JSON.stringify(data.library));
+            if (data.recipes && data.recipes.length > 0) localStorage.setItem('vc_recipes_'+targetId, JSON.stringify(data.recipes));
+            if (data.log) localStorage.setItem('vc_log_'+targetId, JSON.stringify(data.log));
+          }
+        } else {
+          if (data.history && data.history.length > 0) localStorage.setItem('vc_history_'+uid, JSON.stringify(data.history));
+          if (data.library && data.library.length > 0) localStorage.setItem('vc_library_'+uid, JSON.stringify(data.library));
+          if (data.recipes && data.recipes.length > 0) localStorage.setItem('vc_recipes_'+uid, JSON.stringify(data.recipes));
+          if (data.log) localStorage.setItem('vc_log_'+uid, JSON.stringify(data.log));
+        }
+      });
+      var exportDate = backup._exportDate ? new Date(backup._exportDate).toLocaleDateString() : 'unknown date';
+      showResult('success', 'Restore Complete',
+        'Restored backup from '+exportDate+'. All your history, library, and recipes are ready.',
+        ['Open VitalCore — your data will be exactly as it was on your old phone']);
+      setTimeout(scanAll, 500);
+    } catch(err) {
+      showResult('error', 'Import Failed', err.message, []);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showResult(type, title, body, steps) {
+  var el = document.getElementById('result');
+  el.className = 'result '+type; el.style.display = 'block';
+  document.getElementById('r-icon').textContent = type==='success' ? 'Done' : 'Error';
+  document.getElementById('r-title').textContent = title;
+  document.getElementById('r-body').textContent = body;
+  document.getElementById('r-steps').innerHTML = steps.map(function(s,i){
+    return '<div class="step"><div class="step-num">'+(i+1)+'</div><div>'+s+'</div></div>';
+  }).join('');
+}
+
+window.addEventListener('load', scanAll);
+</script>
+</body>
+</html>
